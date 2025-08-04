@@ -58,22 +58,22 @@ def get_essential_network(F, I):
     """
     Determine the essential components of a Boolean network.
 
-    For each gene in a Boolean network, represented by its Boolean function and its regulators,
+    For each node in a Boolean network, represented by its Boolean function and its regulators,
     this function extracts the “essential” part of the function by removing non-essential regulators.
-    The resulting network contains, for each gene, a reduced truth table (with only the essential inputs)
+    The resulting network contains, for each node, a reduced truth table (with only the essential inputs)
     and a corresponding list of essential regulators.
 
     Parameters:
-        F (list): A list of N Boolean functions (truth tables). For gene i, the Boolean function is given as a list
-                  of length 2^(n_i), where n_i is the number of regulators for that gene.
-        I (list): A list of N lists. For gene i, I[i] is a list of regulator indices (typically 0, 1, ..., n_i-1)
+        F (list): A list of N Boolean functions (truth tables). For node i, the Boolean function is given as a list
+                  of length 2^(n_i), where n_i is the number of regulators for that node.
+        I (list): A list of N lists. For node i, I[i] is a list of regulator indices (typically 0, 1, ..., n_i-1)
                   corresponding to the wiring diagram of the Boolean network.
 
     Returns:
         tuple: (F_essential, I_essential) where:
             - F_essential is a list of N Boolean functions (truth tables) of length 2^(m_i), with m_i ≤ n_i,
               representing the functions restricted to the essential regulators.
-            - I_essential is a list of N lists containing the indices of the essential regulators for each gene.
+            - I_essential is a list of N lists containing the indices of the essential regulators for each node.
     """
     import itertools
     F_essential = []
@@ -83,11 +83,11 @@ def get_essential_network(F, I):
             F_essential.append(f)
             I_essential.append(regulators)
             continue
-        elif sum(f) == 0:
+        elif sum(f) == 0: #constant zero function
             F_essential.append(np.array([0]))
             I_essential.append(np.array([], dtype=int))
             continue
-        elif sum(f) == len(f):
+        elif sum(f) == len(f): #constant one function
             F_essential.append(np.array([1]))
             I_essential.append(np.array([], dtype=int))
             continue
@@ -108,25 +108,25 @@ def get_perturbed_network(F, I, ns, control_target, control_source, type_of_cont
     """
     Generate a perturbed Boolean network by removing the influence of a specified regulator.
 
-    The function modifies the Boolean function for a target gene by restricting it to those entries in its truth table
+    The function modifies the Boolean function for a target node by restricting it to those entries in its truth table
     where the input from a given regulator equals the specified type_of_control. The regulator is then removed from
-    the wiring diagram for that gene.
+    the wiring diagram for that node.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each gene.
-        I (list): Wiring diagram for the network; each entry I[i] is a list of regulator indices for gene i.
-        ns (list or np.array): List of in-degrees (number of regulators) for each gene.
-        control_target (int): Index of the target gene to be perturbed.
+        F (list): List of Boolean functions (truth tables) for each node.
+        I (list): Wiring diagram for the network; each entry I[i] is a list of regulator indices for node i.
+        ns (list or np.array): List of in-degrees (number of regulators) for each node.
+        control_target (int): Index of the target node to be perturbed.
         control_source (int): Index of the regulator whose influence is to be removed.
         type_of_control (int, optional): The regulator value (0 or 1) for which the perturbation is applied. Default is 0.
-        left_side_of_truth_table (optional): Precomputed truth table (array of tuples) for the target gene with ns[control_target] inputs.
+        left_side_of_truth_table (optional): Precomputed truth table (array of tuples) for the target node with ns[control_target] inputs.
                                               If not provided, it is computed.
 
     Returns:
         tuple: (F_new, I_new, ns) where:
             - F_new is the updated list of Boolean functions after perturbation.
-            - I_new is the updated wiring diagram after removing the control regulator from the target gene.
-            - ns is the updated list of in-degrees for each gene.
+            - I_new is the updated wiring diagram after removing the control regulator from the target node.
+            - ns is the updated list of in-degrees for each node.
     """
     F_new = [f for f in F]
     I_new = [i for i in I]
@@ -146,11 +146,11 @@ def get_perturbed_network(F, I, ns, control_target, control_source, type_of_cont
     ns = list(map(len, I_new))
     return F_new, I_new, ns
 
-def get_constant_nodes(I, degree, N):
+def get_external_inputs(I, degree, N):
     """
-    Identify constant nodes in a Boolean network.
+    Identify external inputs in a Boolean network.
 
-    A node is considered constant if it has exactly one regulator and that regulator is the node itself.
+    A node is considered an external input if it has exactly one regulator and that regulator is the node itself.
 
     Parameters:
         I (list): A list where I[i] is a list of regulator indices for node i.
@@ -158,7 +158,7 @@ def get_constant_nodes(I, degree, N):
         N (int): Total number of nodes in the network.
 
     Returns:
-        np.array: Array of node indices that are constant.
+        np.array: Array of node indices that are external inputs.
     """
     return np.array([i for i in range(N) if degree[i] == 1 and I[i][0] == i])
 
@@ -219,6 +219,9 @@ def update_network_SDDS(F, I, X, P):
 
     Returns:
         np.array: Updated state vector after applying the stochastic update.
+        
+    References:
+        
     """
     if type(X)==list:
         X = np.array(X)
@@ -1500,12 +1503,12 @@ def adjacency_matrix(I, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=T
     """
     Construct the (binary) adjacency matrix from the wiring diagram.
 
-    Given the wiring diagram I (a list of regulator lists for each gene) and a list of constants,
-    this function builds an adjacency matrix where each entry m[j, i] is 1 if gene j regulates gene i.
+    Given the wiring diagram I (a list of regulator lists for each node) and a list of constants,
+    this function builds an adjacency matrix where each entry m[j, i] is 1 if node j regulates node i.
     Self-loops can be optionally ignored, and constant nodes can be excluded.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         constants (list, optional): List of constant nodes.
         IGNORE_SELFLOOPS (bool, optional): If True, self-loops are ignored.
         IGNORE_CONSTANTS (bool, optional): If True, constant nodes are excluded from the matrix.
@@ -1534,7 +1537,7 @@ def get_signed_adjacency_matrix(I, type_of_each_regulation, constants=[], IGNORE
     -1 for decreasing (inhibiting) regulations, and NaN for any other type.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         type_of_each_regulation (list): List of lists corresponding to the type of regulation ('increasing' or 'decreasing')
                                         for each edge in I.
         constants (list, optional): List of constant nodes.
@@ -1571,7 +1574,7 @@ def get_signed_effective_graph(I, type_of_each_regulation, F, constants=[], IGNO
     Edges are signed according to the type of regulation ('increasing' or 'decreasing').
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         type_of_each_regulation (list): List of lists specifying the type of regulation for each edge.
         F (list): List of Boolean functions (truth tables) for each node.
         constants (list, optional): List of constant nodes.
@@ -1608,7 +1611,7 @@ def get_ffls(I, F=None):
     If F is provided, the function also computes the monotonicity of each regulation in the FFL.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         F (list, optional): List of Boolean functions (truth tables) for each node.
                              If provided along with F, the types (monotonicities) of the regulations are computed.
 
@@ -1652,7 +1655,7 @@ def get_ffls_from_I(I, types_I=None):
     If types_I (the type of each regulation) is provided, it also returns the corresponding regulation types.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         types_I (list, optional): List of lists specifying the type (e.g., 'increasing' or 'decreasing') for each regulation.
 
     Returns:
@@ -1742,12 +1745,12 @@ def generate_networkx_graph(I, constants, variables):
     from each regulator to its target based on the wiring diagram I.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         constants (list): List of constant names.
         variables (list): List of variable names.
 
     Returns:
-        networkx.DiGraph: The generated directed graph.
+        networkx.DiGraph: The noderated directed graph.
     """
     names = list(variables) + list(constants)
     G = nx.DiGraph()
@@ -1763,7 +1766,7 @@ def generate_networkx_graph_from_edges(I, n_variables):
     Only edges among the first n_variables (excluding constant self-loops) are included.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
+        I (list): List of lists, where I[i] contains the indices of regulators for node i.
         n_variables (int): Number of variable nodes (constants are excluded).
 
     Returns:
@@ -1919,48 +1922,7 @@ def is_pos_loop(types_vector):
     return POSITIVE
 
 
-def generate_networkx_graph(I, constants, variables):
-    """
-    Generate a NetworkX directed graph from a wiring diagram.
 
-    Nodes are labeled using the provided variable and constant names.
-    Edges are added based on the wiring diagram I.
-
-    Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
-        constants (list): List of constant names.
-        variables (list): List of variable names.
-
-    Returns:
-        networkx.DiGraph: The generated directed graph.
-    """
-    names = list(variables) + list(constants)
-    G = nx.DiGraph()
-    G.add_nodes_from(names)
-    G.add_edges_from([(names[I[i][j]], names[i]) for i in range(len(variables)) for j in range(len(I[i]))])
-    return G
-
-
-def generate_networkx_graph_from_edges(I, n_variables):
-    """
-    Generate a NetworkX directed graph from an edge list derived from the wiring diagram.
-
-    Only edges among the first n_variables (i.e., non-constant nodes) are included.
-
-    Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for gene i.
-        n_variables (int): Number of variable nodes (constants are excluded).
-
-    Returns:
-        networkx.DiGraph: The resulting directed graph.
-    """
-    edges = []
-    for j, regulators in enumerate(I):
-        if j >= n_variables:  # Exclude constant self-loops.
-            break
-        for i in regulators:
-            edges.append((i, j))
-    return nx.DiGraph(edges)
 
 
 

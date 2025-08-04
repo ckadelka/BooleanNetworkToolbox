@@ -62,7 +62,7 @@ def is_degenerated(f):
                     break
         if depends_on_i == False:
             return True
-    return 
+    return False
 
 def get_essential_variables(f):
     """
@@ -541,7 +541,7 @@ def find_layers(f, can_inputs=np.array([], dtype=int), can_outputs=np.array([], 
         return (depth, number_layers, can_inputs, can_outputs, f, can_order)
     
 
-def get_layerstructure_given_canalizing_outputs_and_corefunction(can_outputs, core_polynomial, n=-1):
+def get_layerstructure_given_canalizing_outputs_and_corefunction(can_outputs, core_polynomial):
     """
     Compute the canalizing layer structure of a Boolean function given its canalized outputs and core polynomial.
 
@@ -552,7 +552,6 @@ def get_layerstructure_given_canalizing_outputs_and_corefunction(can_outputs, co
     Parameters:
         can_outputs (list): List of all canalized output values of the function.
         core_polynomial (list or np.array): Core function (or polynomial) of length 2^(n - depth) after removing canalizing variables.
-        n (int, optional): Number of inputs of the original function. If n == -1, it is inferred as int(np.log2(len(core_polynomial))) + depth.
 
     Returns:
         list: A list [k_1, ..., k_r] describing the number of variables in each canalizing layer.
@@ -564,20 +563,20 @@ def get_layerstructure_given_canalizing_outputs_and_corefunction(can_outputs, co
         [2] Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
             Algorithms and applications. Automatica, 146, 110630.
     """
-    depth = len(can_outputs)
-    if depth == 0:
+    canalizing_depth = len(can_outputs)
+    if canalizing_depth == 0:
         return []
-    if n == -1:
-        n = int(np.log2(len(core_polynomial))) + depth
-    assert depth != n - 1, ("len(can_outputs) == n-1, which is impossible because the last variable "
-                            "must also be canalizing in this case.")
-    if depth == n and n > 1:  # For Boolean NCFs, the last layer must have at least two variables.
+    n = int(np.log2(len(core_polynomial))) + canalizing_depth
+    if canalizing_depth == n and n > 1:  # For Boolean NCFs, the last layer must have at least two variables.
         can_outputs[-1] = can_outputs[-2]
-    elif is_constant(core_polynomial) and depth > 1:  # Exceptional case: last layer needs to be size ≥ 2.
+    elif canalizing_depth == n-1 and len(core_polynomial)==2: #last variable (in core polynomial) must also be canalizing
+        canalizing_depth = n
+        can_outputs.append(can_outputs[-1])
+    elif is_constant(core_polynomial) and canalizing_depth > 1:  # Exceptional case: last layer needs to be size ≥ 2.
         can_outputs[-1] = can_outputs[-2]
     layerstructure = []
     size_of_layer = 1
-    for i in range(1, depth):
+    for i in range(1, canalizing_depth):
         if can_outputs[i] == can_outputs[i - 1]:
             size_of_layer += 1
         else:
@@ -592,7 +591,7 @@ def get_layerstructure_of_an_NCF_given_its_Hamming_weight(n, w):
     Compute the canalizing layer structure of a nested canalizing function (NCF) given its Hamming weight.
 
     There exists a bijection between the Hamming weight (with w equivalent to 2^n - w) and the canalizing layer structure of an NCF.
-    The layer structure is represented as [k_1, ..., k_r], where each k_i ≥ 1 and, for n > 1, the last layer k_r ≥ 2.
+    The layer structure is represented as [k_1, ..., k_r], where each k_i ≥ 1 and, if n > 1, for the last layer k_r ≥ 2.
 
     Parameters:
         n (int): Number of inputs (variables) of the NCF.
@@ -629,51 +628,7 @@ def get_layerstructure_of_an_NCF_given_its_Hamming_weight(n, w):
 
 
 ##k-set canalization, canalizing strength
-def is_kset_canalizing(f, k):
-    """
-    Determine if a Boolean function is k-set canalizing.
-
-    A Boolean function is k-set canalizing if there exists a set of k variables such that setting these variables to specific values
-    forces the output of the function, irrespective of the other n - k inputs.
-
-    Parameters:
-        f (list or np.array): Boolean function of length 2^n (truth table), where n is the number of inputs.
-        k (int): The size of the variable set (with 0 ≤ k ≤ n).
-
-    Returns:
-        bool: True if f is k-set canalizing, False otherwise.
-
-    References:
-        Kadelka, C., Keilty, B., & Laubenbacher, R. (2023). Collectively canalizing Boolean functions.
-        Advances in Applied Mathematics, 145, 102475.
-    """
-    if type(f) == list:
-        f = np.array(f)
-    if k == 0:
-        return is_constant(f)
-    n = int(np.log2(len(f)))
-    desired_value = 2**(n - k)
-    T = np.array(list(itertools.product([0, 1], repeat=n))).T
-    A = np.r_[T, 1 - T]
-    Ak = []
-    for i in range(2 * n):
-        for j in range(i + 1, 2 * n):
-            if j - i == n:
-                continue
-            else:
-                Ak.append(np.bitwise_and(A[i, :], A[j, :]))
-    Ak = []
-    for indices in itertools.combinations(range(2 * n), k):
-        dummy = np.sum(A[np.array(indices), :], 0) == k
-        if sum(dummy) == desired_value:
-            Ak.append(dummy)
-    Ak = np.array(Ak)
-    AktimesF = np.dot(Ak, f)
-    is_there_canalization = 0 in AktimesF or desired_value in AktimesF
-    return is_there_canalization
-
-
-def get_proportion_of_collectively_canalizing_input_sets(f, k, n=-1, left_side_of_truth_table=[], verbose=False):
+def get_proportion_of_collectively_canalizing_input_sets(f, k, left_side_of_truth_table=None, verbose=False):
     """
     Compute the proportion of k-set canalizing input sets for a Boolean function.
 
@@ -683,9 +638,8 @@ def get_proportion_of_collectively_canalizing_input_sets(f, k, n=-1, left_side_o
     Parameters:
         f (list or np.array): Boolean function of length 2^n (truth table), where n is the number of inputs.
         k (int): The size of the variable set (0 ≤ k ≤ n).
-        n (int, optional): Number of variables. If n == -1, it is inferred from the length of f.
         left_side_of_truth_table (optional, array-like): Precomputed left-hand side of the truth table (2^n x n).
-            If not provided, it is computed.
+            If not provided or if its shape does not match, it will be computed.
         verbose (bool, optional): If True, prints detailed information about canalizing k-sets.
 
     Returns:
@@ -699,13 +653,11 @@ def get_proportion_of_collectively_canalizing_input_sets(f, k, n=-1, left_side_o
         f = np.array(f)
     if k == 0:
         return float(is_constant(f))
-    if n == -1:
-        n = int(np.log2(len(f)))
+    n = int(np.log2(len(f)))
     desired_value = 2**(n - k)
-    if left_side_of_truth_table == []:
-        T = np.array(list(itertools.product([0, 1], repeat=n))).T
-    else:
-        T = np.array(left_side_of_truth_table).T
+    if left_side_of_truth_table is None or type(left_side_of_truth_table) != np.ndarray or left_side_of_truth_table.shape[0] != len(f):
+        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
+    T = left_side_of_truth_table.T
     Tk = list(itertools.product([0, 1], repeat=k))
     A = np.r_[T, 1 - T]
     Ak = []
@@ -724,7 +676,33 @@ def get_proportion_of_collectively_canalizing_input_sets(f, k, n=-1, left_side_o
     return sum(is_there_canalization) / len(is_there_canalization)
 
 
-def get_canalizing_strength(f, left_side_of_truth_table=[]):
+def is_kset_canalizing(f, k, left_side_of_truth_table = None):
+    """
+    Determine if a Boolean function is k-set canalizing.
+
+    A Boolean function is k-set canalizing if there exists a set of k variables such that setting these variables to specific values
+    forces the output of the function, irrespective of the other n - k inputs.
+
+    Parameters:
+        f (list or np.array): Boolean function of length 2^n (truth table), where n is the number of inputs.
+        k (int): The size of the variable set (with 0 ≤ k ≤ n).
+        left_side_of_truth_table (optional, array-like): Precomputed left-hand side of the truth table (2^n x n).
+            If not provided or if its shape does not match, it will be computed.
+            
+    Returns:
+        bool: True if f is k-set canalizing, False otherwise.
+
+    References:
+        Kadelka, C., Keilty, B., & Laubenbacher, R. (2023). Collectively canalizing Boolean functions.
+        Advances in Applied Mathematics, 145, 102475.
+    """
+    if left_side_of_truth_table is None or type(left_side_of_truth_table) != np.ndarray or left_side_of_truth_table.shape[0] != len(f):
+        n = int(np.log2(len(f)))
+        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
+    return get_proportion_of_collectively_canalizing_input_sets(f,k,left_side_of_truth_table)>0
+
+
+def get_canalizing_strength(f, left_side_of_truth_table=None):
     """
     Compute the canalizing strength of a Boolean function via exhaustive enumeration.
 
@@ -735,7 +713,8 @@ def get_canalizing_strength(f, left_side_of_truth_table=[]):
     Parameters:
         f (list or np.array): Boolean function of length 2^n (truth table), where n is the number of inputs.
         left_side_of_truth_table (optional, array-like): Precomputed left-hand side of the truth table (2^n x n).
-
+            If not provided or if its shape does not match, it will be computed.
+            
     Returns:
         tuple:
             - float: The canalizing strength of f.
@@ -750,8 +729,10 @@ def get_canalizing_strength(f, left_side_of_truth_table=[]):
     assert abs(n - nfloat) < 1e-10, "f needs to be of length 2^n for some n > 1"
     assert n > 1, "Canalizing strength is only defined for Boolean functions with n > 1 inputs"
     res = []
+    if left_side_of_truth_table is None or type(left_side_of_truth_table) != np.ndarray or left_side_of_truth_table.shape[0] != len(f):
+        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
     for k in range(1, n):
-        res.append(get_proportion_of_collectively_canalizing_input_sets(f, k, n, left_side_of_truth_table=left_side_of_truth_table))
+        res.append(get_proportion_of_collectively_canalizing_input_sets(f, k, left_side_of_truth_table=left_side_of_truth_table))
     return np.mean(np.multiply(res, 2**np.arange(1, n) / (2**np.arange(1, n) - 1))), res
 
 
@@ -777,7 +758,7 @@ def compute_exact_kset_canalizing_proportion_for_ncf_with_specific_layerstructur
     r = len(layerstructure_NCF)
     n = sum(layerstructure_NCF)
     assert min(layerstructure_NCF) >= 1 and (layerstructure_NCF[-1] >= 2 or n == 1), \
-           "Each layer must contain at least one variable (the last layer at least two unless n == 1)"
+        "Each layer must contain at least one variable (the last layer at least two unless n == 1)"
     magnitudes = []
     for t in range(r):
         number_of_input_sets = 0
