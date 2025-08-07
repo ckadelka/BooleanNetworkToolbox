@@ -12,157 +12,14 @@ import numpy as np
 import itertools
 import networkx as nx
 import random
+import math
 from collections import defaultdict
 
 import utils
 import analyze_BF
 
 
-
-def get_strongly_connected_components(I):
-    """
-    Determine the strongly connected components of a wiring diagram.
-
-    The wiring diagram is provided as a list of lists I, where I[i] contains the indices of regulators for node i.
-    The function constructs a directed graph from these edges and returns its strongly connected components.
-
-    Parameters:
-        I (list): A list of lists, where each inner list contains the regulators (source nodes) for the corresponding target node.
-
-    Returns:
-        list: A list of sets, each representing a strongly connected component.
-    """
-    edges_wiring_diagram = []
-    for target, regulators in enumerate(I):
-        for regulator in regulators:
-            edges_wiring_diagram.append((regulator, target))
-    subG = nx.from_edgelist(edges_wiring_diagram, create_using=nx.MultiDiGraph())
-    return [scc for scc in nx.strongly_connected_components(subG)]
-
-def get_modular_structure(I):
-    sccs = get_strongly_connected_components(I)
-    scc_dict = {}
-    for j,s in enumerate(sccs):
-        for el in s:
-            scc_dict.update({el:j})
-    dag = set()
-    for target,regulators in enumerate(I):
-        for regulator in regulators:
-            edge = (scc_dict[regulator],scc_dict[target])
-            if edge[0]!=edge[1]:
-                dag.add(edge)   
-    return dag
-
-
-def get_essential_network(F, I):
-    """
-    Determine the essential components of a Boolean network.
-
-    For each node in a Boolean network, represented by its Boolean function and its regulators,
-    this function extracts the “essential” part of the function by removing non-essential regulators.
-    The resulting network contains, for each node, a reduced truth table (with only the essential inputs)
-    and a corresponding list of essential regulators.
-
-    Parameters:
-        F (list): A list of N Boolean functions (truth tables). For node i, the Boolean function is given as a list
-                  of length 2^(n_i), where n_i is the number of regulators for that node.
-        I (list): A list of N lists. For node i, I[i] is a list of regulator indices (typically 0, 1, ..., n_i-1)
-                  corresponding to the wiring diagram of the Boolean network.
-
-    Returns:
-        tuple: (F_essential, I_essential) where:
-            - F_essential is a list of N Boolean functions (truth tables) of length 2^(m_i), with m_i ≤ n_i,
-              representing the functions restricted to the essential regulators.
-            - I_essential is a list of N lists containing the indices of the essential regulators for each node.
-    """
-    import itertools
-    F_essential = []
-    I_essential = []
-    for f, regulators in zip(F, I):
-        if len(f) == 0:  # happens if the actual degree of f was too large for it to be loaded
-            F_essential.append(f)
-            I_essential.append(regulators)
-            continue
-        elif sum(f) == 0: #constant zero function
-            F_essential.append(np.array([0]))
-            I_essential.append(np.array([], dtype=int))
-            continue
-        elif sum(f) == len(f): #constant one function
-            F_essential.append(np.array([1]))
-            I_essential.append(np.array([], dtype=int))
-            continue
-        essential_variables = np.array(analyze_BF.get_essential_variables(f))
-        n = len(regulators)
-        non_essential_variables = np.array(list(set(list(range(n))) - set(essential_variables)))
-        if len(non_essential_variables) == 0:
-            F_essential.append(f)
-            I_essential.append(regulators)
-        else:
-            left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
-            F_essential.append(np.array(f)[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0])
-            I_essential.append(np.array(regulators)[essential_variables])
-    return F_essential, I_essential
-
-
-def get_perturbed_network(F, I, ns, control_target, control_source, type_of_control=0, left_side_of_truth_table=[]):
-    """
-    Generate a perturbed Boolean network by removing the influence of a specified regulator.
-
-    The function modifies the Boolean function for a target node by restricting it to those entries in its truth table
-    where the input from a given regulator equals the specified type_of_control. The regulator is then removed from
-    the wiring diagram for that node.
-
-    Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): Wiring diagram for the network; each entry I[i] is a list of regulator indices for node i.
-        ns (list or np.array): List of in-degrees (number of regulators) for each node.
-        control_target (int): Index of the target node to be perturbed.
-        control_source (int): Index of the regulator whose influence is to be removed.
-        type_of_control (int, optional): The regulator value (0 or 1) for which the perturbation is applied. Default is 0.
-        left_side_of_truth_table (optional): Precomputed truth table (array of tuples) for the target node with ns[control_target] inputs.
-                                              If not provided, it is computed.
-
-    Returns:
-        tuple: (F_new, I_new, ns) where:
-            - F_new is the updated list of Boolean functions after perturbation.
-            - I_new is the updated wiring diagram after removing the control regulator from the target node.
-            - ns is the updated list of in-degrees for each node.
-    """
-    F_new = [f for f in F]
-    I_new = [i for i in I]
-
-    if left_side_of_truth_table == []:
-        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=ns[control_target])))
-
-    try:
-        index = list(I[control_target]).index(control_source)
-        F_new[control_target] = F_new[control_target][left_side_of_truth_table[:, index] == type_of_control]
-        dummy = list(I_new[control_target])
-        dummy.remove(control_source)
-        I_new[control_target] = np.array(dummy)
-    except ValueError:
-        print('source not regulating target')
-
-    ns = list(map(len, I_new))
-    return F_new, I_new, ns
-
-def get_external_inputs(I, degree, N):
-    """
-    Identify external inputs in a Boolean network.
-
-    A node is considered an external input if it has exactly one regulator and that regulator is the node itself.
-
-    Parameters:
-        I (list): A list where I[i] is a list of regulator indices for node i.
-        degree (list or array): A list where degree[i] is the number of regulators for node i.
-        N (int): Total number of nodes in the network.
-
-    Returns:
-        np.array: Array of node indices that are external inputs.
-    """
-    return np.array([i for i in range(N) if degree[i] == 1 and I[i][0] == i])
-
-## 5) Analysis methods
+##Key functions: compute/simulate network dynamics
 def update_single_node(f, states_regulators):
     """
     Update the state of a single node.
@@ -179,12 +36,12 @@ def update_single_node(f, states_regulators):
     """
     return f[utils.bin2dec(states_regulators)]
 
+
 def update_network_synchronously(F, I, X):
     """
     Perform a synchronous update of a Boolean network.
 
     Each node's new state is determined by applying its Boolean function to the current states of its regulators.
-    The conversion from the regulator states (a binary vector) to a truth table index is done via utils.bin2dec.
 
     Parameters:
         F (list): List of Boolean functions (truth tables) for each node.
@@ -200,6 +57,26 @@ def update_network_synchronously(F, I, X):
     for i in range(len(F)):
         Fx[i] = update_single_node(f = F[i], states_regulators = X[I[i]])
     return Fx
+
+
+def update_network_synchronously_many_times(F, I, initial_state, n_steps):
+    """
+    Update the state of a Boolean network sychronously multiple time steps.
+
+    Starting from the initial state, the network is updated synchronously n_steps times using the update_network_synchronously function.
+
+    Parameters:
+        F (list): List of Boolean functions for each node.
+        I (list): List of regulator indices for each node.
+        initial_state (list or np.array): Initial state vector of the network.
+        n_steps (int): Number of update iterations to perform.
+
+    Returns:
+        np.array: Final state vector after n_steps updates.
+    """
+    for i in range(n_steps):
+        initial_state = update_network_synchronously(F, I, initial_state)
+    return initial_state
 
 
 def update_network_SDDS(F, I, X, P):
@@ -235,58 +112,8 @@ def update_network_SDDS(F, I, X, P):
     return Fx
 
 
-def update_network_many_times(F, I, initial_state, n_steps):
-    """
-    Update the state of a Boolean network sychronously multiple time steps.
-
-    Starting from the initial state, the network is updated synchronously n_steps times using the update_network_synchronously function.
-
-    Parameters:
-        F (list): List of Boolean functions for each node.
-        I (list): List of regulator indices for each node.
-        initial_state (list or np.array): Initial state vector of the network.
-        n_steps (int): Number of update iterations to perform.
-
-    Returns:
-        np.array: Final state vector after n_steps updates.
-    """
-    N = len(F)
-    for i in range(n_steps):
-        initial_state = update_network_synchronously(F, I, N, initial_state)
-    return initial_state
-
-
-def get_derrida_value(F, I, nsim):
-    """
-    Estimate the Derrida value for a Boolean network.
-
-    The Derrida value is computed by perturbing a single node in a randomly chosen state and measuring
-    the average Hamming distance between the resulting updated states of the original and perturbed networks.
-
-    Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
-        nsim (int): Number of simulations to perform.
-
-    Returns:
-        float: The average Hamming distance (Derrida value) over nsim simulations.
-    """
-    N = len(F)
-    hamming_distances = []
-    for i in range(nsim):
-        X = np.random.randint(0, 2, N)
-        Y = X.copy()
-        index = np.random.randint(N)
-        Y[index] = 1 - Y[index]
-        FX = update_network_synchronously(F, I, X)
-        FY = update_network_synchronously(F, I, Y)
-        hamming_distances.append(sum(FX != FY))
-    return np.mean(hamming_distances)
-
-
-
-def get_steady_states_asynchronous(F, I, N, nsim=500, EXACT=False, left_side_of_truth_table=[], 
-                                   initial_sample_points=[], search_depth=50, SEED=-1, DEBUG=True):
+def get_steady_states_asynchronous(F, I, nsim=500, EXACT=False, left_side_of_truth_table=[], 
+                                   initial_sample_points=[], search_depth=50, SEED=-1, DEBUG=False):
     """
     Compute the steady states of a Boolean network under asynchronous updates.
 
@@ -300,9 +127,8 @@ def get_steady_states_asynchronous(F, I, N, nsim=500, EXACT=False, left_side_of_
         F (list): List of Boolean functions (truth tables) for each node.
                  Each function is defined over 2^(# of regulators) entries.
         I (list): List of lists, where I[i] contains the indices of the regulators for node i.
-        N (int): Total number of nodes in the network.
         nsim (int, optional): Number of initial conditions to simulate (default is 500).
-        EXACT (bool, optional): If True, iterate over the entire state space (2^N initial conditions);
+        EXACT (bool, optional): If True, iterate over the entire state space and guarantee finding all steady states (2^N initial conditions);
                                 otherwise, use nsim random initial conditions. (Default is False.)
         left_side_of_truth_table (list, optional): Precomputed truth table (list of tuples) for N inputs.
                                                      Used only if EXACT is True.
@@ -322,6 +148,7 @@ def get_steady_states_asynchronous(F, I, N, nsim=500, EXACT=False, left_side_of_
             - SEED (int): The random seed used for the simulation.
             - initial_sample_points (list): The list of initial sample points used (if provided) or those generated during simulation.
     """
+    N=len(F)
     if EXACT and left_side_of_truth_table == []:
         left_side_of_truth_table = list(map(np.array, list(itertools.product([0, 1], repeat=N))))
 
@@ -525,7 +352,7 @@ def get_steady_states_asynchronous_given_one_initial_condition(F, I, nsim=500, s
     return (steady_states, len(steady_states), basin_sizes, transient_times, steady_state_dict, dictF, SEED, queues)
 
 
-def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps_timeout=1000000000000,
+def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps_timeout=100000,
                                INITIAL_SAMPLE_POINTS_AS_BINARY_VECTORS=True):
     """
     Compute the number of attractors in a Boolean network using an alternative (v2) approach.
@@ -540,7 +367,7 @@ def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps
         I (list): List of lists, where I[i] contains the indices of the regulators for node i.
         nsim (int, optional): Number of initial conditions to simulate (default is 500).
         initial_sample_points (list, optional): List of initial states (in decimal) to use.
-        n_steps_timeout (int, optional): Maximum number of update steps allowed per simulation (default is a very large number).
+        n_steps_timeout (int, optional): Maximum number of update steps allowed per simulation (default 100000).
         INITIAL_SAMPLE_POINTS_AS_BINARY_VECTORS (bool, optional): If True, initial_sample_points are provided as binary vectors;
                                                                   if False, they are given as decimal numbers. Default is True.
 
@@ -552,7 +379,7 @@ def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps
             - attr_dict (dict): Dictionary mapping states (in decimal) to the index of their attractor.
             - initial_sample_points (list): The initial sample points used (if provided, they are returned; otherwise, the generated points).
             - state_space (list): List of states (in decimal) encountered after one update from initial_sample_points.
-            - n_timeout (int): Number of simulations that reached the step timeout.
+            - n_timeout (int): Number of simulations that timed out before reaching an attractor.
     """
     dictF = dict()
     attractors = []
@@ -630,6 +457,8 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
         I (list): List of lists, where I[i] contains the indices of the regulators for node i.
         left_side_of_truth_table (np.array, optional): Precomputed array of all 2^N states (each row is a state).
                                                         If None, it is generated.
+        RETURN_DICTF (bool, optional): If True, the state space is returned as a dictionary, 
+                                        in which each state is associated by its decimal representation.
 
     Returns:
         tuple: A tuple containing:
@@ -638,6 +467,7 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
             - basin_sizes (list): List of counts for each attractor.
             - attractor_dict (dict): Dictionary mapping each state (in decimal) to its attractor index.
             - state_space (np.array): The constructed state space matrix (of shape (2^N, N)).
+            - dictF (dict, only returned if RETURN_DICTF==True): State space as dictionary.
     """
     
     N = len(F)
@@ -645,7 +475,7 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
     if left_side_of_truth_table is None:
         left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
     
-    utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
+    powers_of_two = np.array([2**i for i in range(N)])[::-1]
     degrees = list(map(len, I))
     
     state_space = np.zeros((2**N, N), dtype=int)
@@ -654,7 +484,7 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
             if F[i][j]:
                 # For rows in left_side_of_truth_table where the columns I[i] equal x, set state_space accordingly.
                 state_space[np.all(left_side_of_truth_table[:, I[i]] == np.array(x), axis=1), i] = 1
-    dictF = dict(zip(list(range(2**N)), np.dot(state_space, utils.bin2dec)))
+    dictF = dict(zip(list(range(2**N)), np.dot(state_space, powers_of_two)))
     
     attractors = []
     basin_sizes = []
@@ -684,48 +514,175 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
     else:
         return (attractors, len(attractors), basin_sizes, attractor_dict, state_space)
 
-# def get_specific_coherence_values(attractors,attractor_dict,dictF,left_side_of_truth_table=None):
-#     N = int(np.log2(len(dictF)))
-#     if left_side_of_truth_table==None:
-#         left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
-#     #attractors, n_attractors, basin_sizes, attractor_dict, state_space, dictF = get_attractors_synchronous_exact(F, I, left_side_of_truth_table,True)
-#     attracting_states = flatten(attractors)
-#     height = dict(zip(attracting_states,[0]*len(attracting_states)))
-#     remaining_states = set(dictF.keys()) - set(attracting_states)
-#     while len(remaining_states)>0:
-#         for key in list(remaining_states):
-#             try:
-#                 height_key = height[dictF[key]] + 1
-#                 height.update({key:height_key})
-#                 remaining_states.discard(key)
-#             except KeyError:
-#                 pass
-            
-#     flowthrough = 
-            
-#     coherence_per_state = np.zeros(2**N)
-#     utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
-#     for xdec, x in enumerate(left_side_of_truth_table): #iterate over each edge of the n-dim Hypercube once
-#         for i in range(N):
-#             if x[i] == 0:
-#                 ydec = xdec + utils.bin2dec[i]
-#             else: #to ensure we are not double-counting each edge
-#                 continue
-#             index_attr_x = attractor_dict[xdec]
-#             index_attr_y = attractor_dict[ydec]
-#             if index_attr_x == index_attr_y:
-#                 coherence_per_state[xdec] += 1
-#                 coherence_per_state[ydec] += 1
-#     coherence_per_state /= N
 
-
-
-def get_proportion_of_largest_basin_size(basin_sizes):
+## Transform Boolean networks
+def get_essential_network(F, I):
     """
-    Compute the proportion of the largest basin size relative to the total basin sizes.
+    Determine the essential components of a Boolean network.
 
-    This function calculates the ratio of the largest basin size to the sum of all basin sizes.
-    This metric is useful for assessing the dominance of a particular attractor’s basin in a Boolean network.
+    For each node in a Boolean network, represented by its Boolean function and its regulators,
+    this function extracts the “essential” part of the function by removing non-essential regulators.
+    The resulting network contains, for each node, a reduced truth table (with only the essential inputs)
+    and a corresponding list of essential regulators.
+
+    Parameters:
+        F (list): A list of N Boolean functions (truth tables). For node i, the Boolean function is given as a list
+                  of length 2^(n_i), where n_i is the number of regulators for that node.
+        I (list): A list of N lists. For node i, I[i] is a list of regulator indices (typically 0, 1, ..., n_i-1)
+                  corresponding to the wiring diagram of the Boolean network.
+
+    Returns:
+        tuple: (F_essential, I_essential) where:
+            - F_essential is a list of N Boolean functions (truth tables) of length 2^(m_i), with m_i ≤ n_i,
+              representing the functions restricted to the essential regulators.
+            - I_essential is a list of N lists containing the indices of the essential regulators for each node.
+    """
+    F_essential = []
+    I_essential = []
+    for f, regulators in zip(F, I):
+        if len(f) == 0:  # happens if the actual degree of f was too large for it to be loaded
+            F_essential.append(f)
+            I_essential.append(regulators) #keep all regulators (unable to determine if all are essential)
+            continue
+        elif sum(f) == 0: #constant zero function
+            F_essential.append(np.array([0]))
+            I_essential.append(np.array([], dtype=int))
+            continue
+        elif sum(f) == len(f): #constant one function
+            F_essential.append(np.array([1]))
+            I_essential.append(np.array([], dtype=int))
+            continue
+        essential_variables = np.array(analyze_BF.get_essential_variables(f))
+        n = len(regulators)
+        non_essential_variables = np.array(list(set(list(range(n))) - set(essential_variables)))
+        if len(non_essential_variables) == 0:
+            F_essential.append(f)
+            I_essential.append(regulators)
+        else:
+            left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
+            F_essential.append(np.array(f)[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0])
+            I_essential.append(np.array(regulators)[essential_variables])
+    return F_essential, I_essential
+
+
+def get_edge_controlled_network(F, I, control_target, control_source, type_of_edge_control=0, left_side_of_truth_table=[]):
+    """
+    Generate a perturbed Boolean network by removing the influence of a specified regulator on a specified target.
+
+    The function modifies the Boolean function for a target node by restricting it to those entries in its truth table
+    where the input from a given regulator equals the specified type_of_control. The regulator is then removed from
+    the wiring diagram for that node.
+
+    Parameters:
+        F (list): List of Boolean functions (truth tables) for each node.
+        I (list): Wiring diagram for the network; each entry I[i] is a list of regulator indices for node i.
+        control_target (int): Index of the target node to be perturbed.
+        control_source (int): Index of the regulator whose influence is to be removed.
+        type_of_edge_control (int, optional): Source value in regulation after control. Default is 0.
+        left_side_of_truth_table (optional): Precomputed truth table (array of tuples) for the target node with len(I[control_target]) inputs.
+                                              If not provided, it is computed.
+
+    Returns:
+        tuple: (F_new, I_new, ns) where:
+            - F_new is the updated list of Boolean functions after perturbation.
+            - I_new is the updated wiring diagram after removing the control regulator from the target node.
+            - degrees_new is the updated list of in-degrees for each node.
+    """
+    assert type_of_edge_control in [0,1], "type_of_edge_control must be 0 or 1."
+    assert control_source in I[control_target], "control_source=%i does not regulate control_target=%i." % (control_source,control_target)
+    
+    F_new = [f for f in F]
+    I_new = [i for i in I]
+
+    if left_side_of_truth_table == []:
+        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=len(I[control_target]))))
+
+    index = list(I[control_target]).index(control_source)
+    F_new[control_target] = F_new[control_target][left_side_of_truth_table[:, index] == type_of_edge_control]
+    dummy = list(I_new[control_target])
+    dummy.remove(control_source)
+    I_new[control_target] = np.array(dummy)
+
+    degrees_new = list(map(len, I_new))
+    return F_new, I_new, degrees_new
+
+
+def get_BN_with_fixed_source_nodes(F,I,n_variables,n_source_nodes,values_source_nodes):
+    
+    #NOTE: F, I must be arranged so that the source nodes appear last
+    
+    assert len(F) == len(I)
+    F_new = [np.array(el) for el in F[:n_variables]]
+    I_new = [np.array(el) for el in I[:n_variables]]
+    
+    for source_node,value in zip(list(range(n_variables,n_variables+n_source_nodes)),values_source_nodes):
+        for i in range(n_variables):
+            try:
+                index = list(I[i]).index(source_node) #check if the constant is part of regulators
+            except ValueError:
+                continue
+            truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=len(I_new[i]))))))
+            indices_to_keep = np.where(truth_table[:,index]==value)[0]
+            F_new[i] = F_new[i][indices_to_keep]
+            I_new[i] = I_new[i][~np.in1d(I_new[i], source_node)]
+    return F_new,I_new
+
+
+def get_external_inputs(I, degree, N):
+    """
+    Identify external inputs in a Boolean network.
+
+    A node is considered an external input if it has exactly one regulator and that regulator is the node itself.
+
+    Parameters:
+        I (list): A list where I[i] is a list of regulator indices for node i.
+        degree (list or array): A list where degree[i] is the number of regulators for node i.
+        N (int): Total number of nodes in the network.
+
+    Returns:
+        np.array: Array of node indices that are external inputs.
+    """
+    return np.array([i for i in range(N) if degree[i] == 1 and I[i][0] == i])
+
+
+## Robustness measures: synchronous Derrida value, entropy of basin size distribution, coherence, fragility
+def get_derrida_value(F, I, nsim=1000, EXACT = False):
+    """
+    Estimate the Derrida value for a Boolean network.
+
+    The Derrida value is computed by perturbing a single node in a randomly chosen state and measuring
+    the average Hamming distance between the resulting updated states of the original and perturbed networks.
+
+    Parameters:
+        F (list): List of Boolean functions (truth tables) for each node.
+        I (list): List of regulator indices for each node.
+        nsim (int, optional): Number of simulations to perform. Default is 1000.
+
+    Returns:
+        float: The average Hamming distance (Derrida value) over nsim simulations.
+    """
+    N = len(F)
+    if EXACT:
+        return np.mean([analyze_BF.get_average_sensitivity(f,EXACT=True,NORMALIZED=False) for f in F])
+    else:
+        hamming_distances = []
+        for i in range(nsim):
+            X = np.random.randint(0, 2, N)
+            Y = X.copy()
+            index = np.random.randint(N)
+            Y[index] = 1 - Y[index]
+            FX = update_network_synchronously(F, I, X)
+            FY = update_network_synchronously(F, I, Y)
+            hamming_distances.append(sum(FX != FY))
+        return np.mean(hamming_distances)
+
+
+def get_relative_size_of_largest_basin(basin_sizes):
+    """
+    Compute the size of the largest basin relative to the total size of the state space.
+
+    This function calculates the ratio of the largest basin size to the size of the state space.
+    This metric is useful for assessing the dominance of a particular basin of attraction in a Boolean network.
 
     Parameters:
         basin_sizes (list or array-like): A list where each element represents the size of a basin
@@ -757,9 +714,9 @@ def get_entropy_of_basin_size_distribution(basin_sizes):
     return sum([-np.log(p) * p for p in probabilities])
 
 
-def get_robustness_from_attractor_dict_exact(attractor_dict, N, n_attractors, left_side_of_truth_table):
+def get_coherence_from_attractor_dict_exact(attractor_dict, left_side_of_truth_table=None):
     """
-    Compute the robustness (coherence) of a Boolean network based on its attractor dictionary.
+    Compute the coherence of a Boolean network based on its attractor dictionary.
 
     This function computes the proportion of neighbors in the Boolean hypercube that, following a synchronous update,
     transition to the same attractor. For each state in the fully sampled state space (left_side_of_truth_table),
@@ -769,32 +726,38 @@ def get_robustness_from_attractor_dict_exact(attractor_dict, N, n_attractors, le
 
     Parameters:
         attractor_dict (dict): A dictionary mapping each state (in decimal representation) to its attractor index.
-                                 This dictionary must be computed from a fully sampled state space.
-        N (int): The number of nodes in the network.
-        n_attractors (int): The total number of attractors (not directly used in computation, but provided for context).
+                                 This dictionary must be computed from a fully sampled state space, 
+                                 e.g., the output of get_attractors_synchronous_exact.
         left_side_of_truth_table (list or array): The full truth table of the network states, where each entry is a numpy array
-                                                    representing one state (of length N).
+                                                    representing one state (of length N). If None, it is generated
 
     Returns:
         float: The robustness measure (i.e., the proportion of neighboring states that transition to the same attractor).
     """
+    n_attractors = len(set(attractor_dict.values()))
     if n_attractors == 1:
         return 1
-    utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
+    
+    N = int(np.log2(len(attractor_dict)))
+
+    if left_side_of_truth_table is None:
+        left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
+
+    powers_of_2 = np.array([2**i for i in range(N)])[::-1]
     count_of_neighbors_who_transition_to_same_attractor = 0
     for xdec, x in enumerate(left_side_of_truth_table):
         for i in range(N):
             if x[i] == 0:
-                ydec = xdec + utils.bin2dec[i]
+                ydec = xdec + powers_of_2[i]
             else:
                 continue
             if attractor_dict[xdec] == attractor_dict[ydec]:
                 count_of_neighbors_who_transition_to_same_attractor += 1
     return count_of_neighbors_who_transition_to_same_attractor / (2**(N-1) * N)
 
-def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_truth_table=None):
+def get_attractors_and_robustness_measures_synchronous_exact(F, I, left_side_of_truth_table=None):
     """
-    Compute the robustness (coherence) of a Boolean network based on its attractor dictionary.
+    Compute the attractors and several robustness measures of a Boolean network.
 
     This function computes the exact attractors and robustness (coherence and fragility) of each basin of attraction and of each attractor.
 
@@ -807,7 +770,7 @@ def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_
     Returns:
         tuple: A tuple containing:
             - attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
-            - exact_number_of_attractors (int): The lower bound on the number of attractors found.
+            - exact_number_of_attractors (int): The exact number of network attractors.
             - exact_basin_sizes (list): List of basin sizes for each attractor.
             - attractor_dict (dict): Dictionary mapping each state (in decimal) to its attractor index.
             - state_space (np.array): The constructed state space matrix (of shape (2^N, N)).
@@ -815,6 +778,8 @@ def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_
             - exact_basin_fragility (list): fragility of each basin.
             - attractor_coherence (list): attractor coherence of each basin (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
             - attractor_fragility (list): attractor fragility of each basin  (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+            - coherence (float): overall network coherence
+            - fragility (float): overall network fragility
     """
     N = len(F)
     
@@ -827,7 +792,7 @@ def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_
     
     
     if n_attractors == 1:
-        return (attractors, n_attractors, np.array(basin_sizes)/2**N, attractor_dict, state_space, np.ones(1), np.zeros(1), np.ones(1), np.zeros(1))
+        return (attractors, n_attractors, np.array(basin_sizes)/2**N, attractor_dict, state_space, np.ones(1), np.zeros(1), np.ones(1), np.zeros(1), 1, 0)
     
     mean_states_attractors = []
     is_attr_dict = dict()
@@ -848,15 +813,15 @@ def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_
     distance_between_attractors = distance_between_attractors/N
     
     basin_coherences = np.zeros(n_attractors)
-    basin_fragility = np.zeros(n_attractors)
+    basin_fragilities = np.zeros(n_attractors)
     attractor_coherences = np.zeros(n_attractors)
-    attractor_fragility = np.zeros(n_attractors)
+    attractor_fragilities = np.zeros(n_attractors)
     
-    utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
+    powers_of_2 = np.array([2**i for i in range(N)])[::-1]
     for xdec, x in enumerate(left_side_of_truth_table): #iterate over each edge of the n-dim Hypercube once
         for i in range(N):
             if x[i] == 0:
-                ydec = xdec + utils.bin2dec[i]
+                ydec = xdec + powers_of_2[i]
             else: #to ensure we are not double-counting each edge
                 continue
             index_attr_x = attractor_dict[xdec]
@@ -876,31 +841,38 @@ def get_robustness_measures_and_attractors_synchronous_exact(F, I, left_side_of_
                     pass
             else:
                 normalized_Hamming_distance = distance_between_attractors[index_attr_x,index_attr_y]
-                basin_fragility[index_attr_x] += normalized_Hamming_distance
-                basin_fragility[index_attr_y] += normalized_Hamming_distance
+                basin_fragilities[index_attr_x] += normalized_Hamming_distance
+                basin_fragilities[index_attr_y] += normalized_Hamming_distance
                 try:
                     is_attr_dict[xdec]
-                    attractor_fragility[index_attr_x] += normalized_Hamming_distance
+                    attractor_fragilities[index_attr_x] += normalized_Hamming_distance
                 except KeyError:
                     pass
                 try:
                     is_attr_dict[ydec]
-                    attractor_fragility[index_attr_y] += normalized_Hamming_distance
+                    attractor_fragilities[index_attr_y] += normalized_Hamming_distance
                 except KeyError:
                     pass
                 
     #normalizations
     for i,(basin_size,length_attractor) in enumerate(zip(basin_sizes,len_attractors)):
         basin_coherences[i] = basin_coherences[i] / basin_size / N
-        basin_fragility[i] = basin_fragility[i] / basin_size / N
+        basin_fragilities[i] = basin_fragilities[i] / basin_size / N
         attractor_coherences[i] = attractor_coherences[i] / length_attractor / N
-        attractor_fragility[i] = attractor_fragility[i] / length_attractor / N
+        attractor_fragilities[i] = attractor_fragilities[i] / length_attractor / N
     basin_sizes = np.array(basin_sizes)/2**N
     
-    return (attractors, n_attractors, basin_sizes, attractor_dict, state_space, basin_coherences, basin_fragility, attractor_coherences, attractor_fragility)
+    coherence = np.dot(basin_sizes,basin_coherences)
+    fragility = np.dot(basin_sizes,basin_fragilities)
+    
+    return (attractors, n_attractors, basin_sizes, 
+            attractor_dict, state_space,
+            coherence,fragility,
+            basin_coherences, basin_fragilities,
+            attractor_coherences, attractor_fragilities)
 
 
-def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
+def get_attractors_and_robustness_measures_synchronous(F, I, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
     """
     Approximate global robustness measures and attractors.
 
@@ -925,15 +897,14 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
             - attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
             - lower_bound_number_of_attractors (int): The lower bound on the number of attractors found.
             - approximate_basin_sizes (list): List of basin sizes for each attractor.
-            - approximate_coherence (float): The approximated global robustness (coherence) measure.
-            - approximate_fragility (float): The approximated fragility measure (averaged per node).
+            - approximate_coherence (float): The approximate overall network coherence.
+            - approximate_fragility (float): The approximate overall network fragility.
             - final_hamming_distance_approximation (float): The approximated final Hamming distance measure.
-            - approximate_basin_coherence (list): coherence of each basin.
-            - approximate_basin_fragility (list): fragility of each basin.
-            - attractor_coherence (list): attractor coherence of each basin (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
-            - attractor_fragility (list): attractor fragility of each basin  (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+            - approximate_basin_coherence (list): The approximate coherence of each basin.
+            - approximate_basin_fragility (list): The approximate fragility of each basin.
+            - attractor_coherence (list): The exact coherence of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+            - attractor_fragility (list): The exact fragility of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
     """
-    import math
     def lcm(a, b):
         return abs(a*b) // math.gcd(a, b)
     
@@ -951,9 +922,9 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
     height = []
     degrees = list(map(len, I))
     
-    utils.bin2decs = [np.array([2**i for i in range(NN)])[::-1] for NN in range(max(degrees)+1)]
+    powers_of_2s = [np.array([2**i for i in range(NN)])[::-1] for NN in range(max(degrees)+1)]
     if N<64:
-        utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
+        powers_of_2 = np.array([2**i for i in range(N)])[::-1]
     
     robustness_approximation = 0
     fragility_sum = 0
@@ -971,7 +942,7 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
             if j == 0:
                 x = np.random.randint(2, size=N)
                 if N<64:
-                    xdec = np.dot(x, utils.bin2dec)
+                    xdec = np.dot(x, powers_of_2)
                 else: #out of range of np.int64
                     xdec = ''.join(str(bit) for bit in x)
                 x_old = x.copy()
@@ -980,7 +951,7 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
                 random_flipped_bit = np.random.choice(N)
                 x[random_flipped_bit] = 1 - x[random_flipped_bit]
                 if N<64:
-                    xdec = np.dot(x, utils.bin2dec)
+                    xdec = np.dot(x, powers_of_2)
                 else: #out of range of np.int64
                     xdec = ''.join(str(bit) for bit in x)               
             queue = [xdec]
@@ -994,11 +965,11 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
                         fx = []
                         for jj in range(N):
                             if degrees[jj]>0:
-                                fx.append(F[jj][np.dot(x[I[jj]], utils.bin2decs[degrees[jj]])])
+                                fx.append(F[jj][np.dot(x[I[jj]], powers_of_2s[degrees[jj]])])
                             else:#constant functions whose regulators were all fixed to a specific value
                                 fx.append(F[jj][0])
                         if N<64:
-                            fxdec = np.dot(fx, utils.bin2dec)
+                            fxdec = np.dot(fx, powers_of_2)
                         else:
                             fxdec = ''.join(str(bit) for bit in fx)               
                         dictF.update({xdec: fxdec})
@@ -1110,7 +1081,7 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
                         x = np.array(list(attractor_state), dtype=int)
                     x[i] = 1 - x[i]
                     if N<64:
-                        xdec = np.dot(x, utils.bin2dec)
+                        xdec = np.dot(x, powers_of_2)
                     else:
                         xdec = ''.join(str(bit) for bit in x)
                     queue = [xdec]
@@ -1124,11 +1095,11 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
                                 fx = []
                                 for jj in range(N):
                                     if degrees[jj]>0:
-                                        fx.append(F[jj][np.dot(x[I[jj]], utils.bin2decs[degrees[jj]])])
+                                        fx.append(F[jj][np.dot(x[I[jj]], powers_of_2s[degrees[jj]])])
                                     else:#constant functions whose regulators were all fixed to a specific value
                                         fx.append(F[jj][0])
                                 if N<64:
-                                    fxdec = np.dot(fx, utils.bin2dec)
+                                    fxdec = np.dot(fx, powers_of_2)
                                 else:
                                     fxdec = ''.join(str(bit) for bit in fx)               
                                 dictF.update({xdec: fxdec})
@@ -1184,8 +1155,7 @@ def get_robustness_measures_and_attractors(F, I, number_different_IC=500, RETURN
         attractor_fragility = np.array([s/N**2/size_attr for s,size_attr in zip(attractor_fragility,map(len,attractors_original))]) #something is wrong with attractor fragility, it returns values > 1 for small basins
         results[0] = attractors_original
         return tuple(results + [attractor_coherence,attractor_fragility])
-def flatten(l):
-    return [item for sublist in l for item in sublist]
+    
 
 def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns = [],left_side_of_truth_table=None):
     """
@@ -1249,42 +1219,9 @@ def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns =
    
     
     """
-    def get_BN_with_fixed_source_nodes_fast(F,I,n_var,n_const,values_constants):
-        #don't require a truth table look-up as long as constants are removed in reverse. 
-        #Reason: I[i] is sorted and constants are the last entries in F
-        assert len(F) == len(I)
-        F_new = F[:n_var]
-        I_new = I[:n_var]
+    
+
         
-        for constant,value in zip(list(range(n_var+n_const-1,n_var-1,-1)),values_constants):
-            for i in range(n_var):
-                if constant in I[i]:
-                    if value==0:
-                        F_new[i] = F_new[i][0::2]
-                    else:
-                        F_new[i] = F_new[i][1::2]                
-                    I_new[i] = I_new[i][:-1]
-        return F_new,I_new
-    
-    def get_BN_with_fixed_source_nodes(F,I,n_var,n_const,values_constants):
-        assert len(F) == len(I)
-        F_new = [np.array(el) for el in F[:n_var]]
-        I_new = [np.array(el) for el in I[:n_var]]
-        
-        for constant,value in zip(list(range(n_var,n_var+n_const)),values_constants):
-            for i in range(n_var):
-                try:
-                    index = list(I[i]).index(constant) #check if the constant is part of regulators
-                except ValueError:
-                    continue
-                truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=len(I_new[i]))))))
-                indices_to_keep = np.where(truth_table[:,index]==value)[0]
-                F_new[i] = F_new[i][indices_to_keep]
-                I_new[i] = I_new[i][~np.in1d(I_new[i], constant)]
-        return F_new,I_new
-    
-    import math
-    
     
 
     n_var = len(F)
@@ -1314,7 +1251,7 @@ def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns =
     if left_side_of_truth_table is None:
         left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
     
-    utils.bin2dec = np.array([2**i for i in range(N)])[::-1]
+    powers_of_2 = np.array([2**i for i in range(N)])[::-1]
     
     state_space_with_fixed_sources = []
     dictF_with_fixed_source = []
@@ -1326,7 +1263,7 @@ def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns =
                     # For rows in left_side_of_truth_table where the columns I[i] equal x, set state_space accordingly.
                     state_space[np.all(left_side_of_truth_table[:, Is_with_fixed_sources[iii][i]] == np.array(x), axis=1), i] = 1
         state_space_with_fixed_sources.append(state_space)
-        dictF_with_fixed_source.append(dict(zip(list(range(2**N)), np.dot(state_space, utils.bin2dec))))
+        dictF_with_fixed_source.append(dict(zip(list(range(2**N)), np.dot(state_space, powers_of_2))))
         
     attractors = []
     basin_sizes = []
@@ -1360,6 +1297,41 @@ def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns =
 
 
 
+
+
+def get_strongly_connected_components(I):
+    """
+    Determine the strongly connected components of a wiring diagram.
+
+    The wiring diagram is provided as a list of lists I, where I[i] contains the indices of regulators for node i.
+    The function constructs a directed graph from these edges and returns its strongly connected components.
+
+    Parameters:
+        I (list): A list of lists, where each inner list contains the regulators (source nodes) for the corresponding target node.
+
+    Returns:
+        list: A list of sets, each representing a strongly connected component.
+    """
+    edges_wiring_diagram = []
+    for target, regulators in enumerate(I):
+        for regulator in regulators:
+            edges_wiring_diagram.append((regulator, target))
+    subG = nx.from_edgelist(edges_wiring_diagram, create_using=nx.MultiDiGraph())
+    return [scc for scc in nx.strongly_connected_components(subG)]
+
+def get_modular_structure(I):
+    sccs = get_strongly_connected_components(I)
+    scc_dict = {}
+    for j,s in enumerate(sccs):
+        for el in s:
+            scc_dict.update({el:j})
+    dag = set()
+    for target,regulators in enumerate(I):
+        for regulator in regulators:
+            edge = (scc_dict[regulator],scc_dict[target])
+            if edge[0]!=edge[1]:
+                dag.add(edge)   
+    return dag
 
 def topological_sort_dag(dag,num_sccs):
     visited_component = set()
@@ -1485,7 +1457,7 @@ def get_attractors_synchronous_exact_exploiting_modularity(F, I):
             for attractor_of_each_upstream_module in itertools.product(*upstream_attractors):
                 all_input_patterns.append([])
                 for attractor,upstream_module_id in zip(attractor_of_each_upstream_module,inputs_per_module[module_id]):
-                    all_input_patterns[-1].append(flatten(attractor[:,np.array(list(map(lambda x: pos_in_module_per_input_nodes[x],nodes_per_upstream_module_we_care_about[upstream_module_id])))]))
+                    all_input_patterns[-1].append(utils.flatten(attractor[:,np.array(list(map(lambda x: pos_in_module_per_input_nodes[x],nodes_per_upstream_module_we_care_about[upstream_module_id])))]))
 
             F2 = [F[j] for j in nodes_in_module]
             I2 = [list(map(lambda x: pos_in_module[x],I[j])) for j in nodes_in_module]                
@@ -1796,7 +1768,6 @@ def simple_cycles(G, max_len=4):
     Yields:
         list: A list of nodes representing a simple cycle.
     """
-    from collections import defaultdict
 
     def _unblock(thisnode, blocked, B):
         stack = set([thisnode])
