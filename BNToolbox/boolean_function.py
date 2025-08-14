@@ -296,74 +296,9 @@ class BooleanFunction:
                 return False
 
 
-    def _is_k_canalizing_return_inputs_outputs_corefunction(self,k,can_inputs,can_outputs):
+    def _is_k_canalizing_return_canalizing_structure(self, k, can_inputs,can_outputs, can_order,variables):
         """
-        Only for internal use by recursively defined is_k_canalizing_return_inputs_outputs_corefunction.
-        """
-        if k == 0: #any function is 0-canalizing, can immediately return True
-            return (True, can_inputs, can_outputs, self)
-        w = sum(self.f)
-        if w == 0 or w == 2**self.n: #eventually the recursion will end here (if self.f is a constant function)
-            return (False, can_inputs, can_outputs, self)
-        desired_value = 2**(self.n - 1)
-        T = np.array(list(itertools.product([0, 1], repeat=self.n))).T
-        A = np.r_[T, 1 - T]
-        if len(can_outputs)==0 or can_outputs[-1]==0:
-            CHECK_FOR_CANALIZED_VALUE_0_FIRST = True
-        else:
-            CHECK_FOR_CANALIZED_VALUE_0_FIRST = False
-        try:  # check for canalizing output 1
-            index = list(np.dot(A, 1 - self.f if CHECK_FOR_CANALIZED_VALUE_0_FIRST else self.f)).index(desired_value)
-            new_f = self.f[np.where(A[index] == 0)[0]]
-            new_bf = BooleanFunction(list(new_f))
-            return new_bf._is_k_canalizing_return_inputs_outputs_corefunction(k - 1, 
-                                                                      np.append(can_inputs, int(index < self.n)),
-                                                                      np.append(can_outputs, (0 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 1)),
-                                                                      )
-        except ValueError:
-            try:  # check for canalizing output 0
-                index = list(np.dot(A, self.f if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 1-self.f)).index(desired_value)
-                new_f = self.f[np.where(A[index] == 0)[0]]
-                new_bf = BooleanFunction(list(new_f))
-                return new_bf._is_k_canalizing_return_inputs_outputs_corefunction(k - 1, 
-                                                                          np.append(can_inputs, int(index < self.n)),
-                                                                          np.append(can_outputs, (1 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 0)),
-                                                                          )
-            except ValueError: #or the recursion will end here (if self.f is non-canalizing)
-                return (False, can_inputs, can_outputs, self)
-
-    def is_k_canalizing_return_inputs_outputs_corefunction(self, k):
-        """
-        Determine if a Boolean function is k-canalizing and return associated canalizing data.
-
-        This function recursively checks whether f is k-canalizing and returns:
-          - A boolean indicating success.
-          - The canalizing input values.
-          - The canalized output values.
-          - The core function that remains after removing the canalizing variables.
-
-        Parameters:
-            k (int): The canalizing depth to check.
-
-        Returns:
-            tuple: A tuple containing:
-                - bool: True if f is k-canalizing, False otherwise.
-                - np.array: Array of canalizing input values.
-                - np.array: Array of canalized output values.
-                - np.array: The core function (remaining truth table) after canalizing variables are removed.
-        
-        References:
-            He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
-                Physica D: Nonlinear Phenomena, 314, 1-8.
-            Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
-                Algorithms and applications. Automatica, 146, 110630.
-        """
-        return self._is_k_canalizing_return_inputs_outputs_corefunction(k,can_inputs=np.array([], dtype=int),can_outputs=np.array([], dtype=int))
-
-
-    def _is_k_canalizing_return_inputs_outputs_corefunction_order(self, k, can_inputs,can_outputs, can_order,variables):
-        """
-        Only for internal use by recursively defined is_k_canalizing_return_inputs_outputs_corefunction_order.
+        Only for internal use by recursively defined is_k_canalizing_return_canalizing_structure.
         """
         if k == 0: #any function is 0-canalizing, can immediately return True
             return (True, can_inputs, can_outputs, self, can_order)
@@ -386,7 +321,7 @@ class BooleanFunction:
             new_f = self.f[np.where(A[index] == 0)[0]]
             variable = variables.pop(index % self.n)
             new_bf = BooleanFunction(list(new_f))
-            return new_bf._is_k_canalizing_return_inputs_outputs_corefunction_order(k - 1, 
+            return new_bf._is_k_canalizing_return_canalizing_structure(k - 1, 
                                                                             np.append(can_inputs, int(index < self.n)),
                                                                             np.append(can_outputs, (0 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 1)),
                                                                             np.append(can_order, variable),
@@ -397,7 +332,7 @@ class BooleanFunction:
                 new_f = self.f[np.where(A[index] == 0)[0]]
                 variable = variables.pop(index % self.n)
                 new_bf = BooleanFunction(list(new_f))
-                return new_bf._is_k_canalizing_return_inputs_outputs_corefunction_order(k - 1, 
+                return new_bf._is_k_canalizing_return_canalizing_structure(k - 1, 
                                                                                 np.append(can_inputs, int(index < self.n)),
                                                                                 np.append(can_outputs, (1 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 0)),
                                                                                 np.append(can_order, variable),
@@ -406,7 +341,7 @@ class BooleanFunction:
                 return (False, can_inputs, can_outputs, self, can_order)
         
 
-    def is_k_canalizing_return_inputs_outputs_corefunction_order(self, k):
+    def is_k_canalizing_return_canalizing_structure(self, k):
         """
         Determine if a Boolean function is k-canalizing and return canalizing data including variable order.
 
@@ -434,7 +369,7 @@ class BooleanFunction:
             Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
                 Algorithms and applications. Automatica, 146, 110630.
         """
-        return self._is_k_canalizing_return_inputs_outputs_corefunction_order(k,can_inputs=np.array([], dtype=int),can_outputs=np.array([], dtype=int), can_order=np.array([], dtype=int),variables=[])
+        return self._is_k_canalizing_return_canalizing_structure(k,can_inputs=np.array([], dtype=int),can_outputs=np.array([], dtype=int), can_order=np.array([], dtype=int),variables=[])
 
 
     def _find_layers(self, can_inputs, can_outputs, can_order, variables, depth, number_layers):
