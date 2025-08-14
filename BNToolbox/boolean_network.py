@@ -38,12 +38,12 @@ class BooleanNetwork:
         
         self.F = []
         for f in F:
-            if type(f) in [list,np.array]:
+            if type(f) in [ list, np.array ]:
                 self.F.append(BF(f))
-            elif type(f)==BF:
+            elif type(f) == BF:
                 self.F.append(f)
             else:
-                raise #TODO: raise error
+                raise TypeError(f"F holds invalid data type {type(f)} : Expected either list, numpy array, or BooleanFunction")
                 
         self.N = len(F)
         self.I = I
@@ -55,7 +55,6 @@ class BooleanNetwork:
     def to_pybooleannet_xxxxx(self):
         return pybooleannet.xxxxxx(xxxxx)#TODO: figure out what exactly to pass
         
-    
     def update_single_node(self, index, states_regulators):
         """
         Update the state of a single node.
@@ -70,7 +69,7 @@ class BooleanNetwork:
         Returns:
             int: Updated state of the node (0 or 1).
         """
-        return self.F[index][utils.bin2dec(states_regulators)]
+        return self.F[index].f[utils.bin2dec(states_regulators)]
 
 
     def update_network_synchronously(self, X):

@@ -40,14 +40,15 @@ def from_pybooleannet_xxxxx(xxxxx):
 
 class BooleanFunction:
     def __init__(self, f):
-        assert type(f) in [ list, np.array, np.ndarray], "f must be an array"
+        assert type(f) in [ list, np.array, np.ndarray ], "f must be either a list or numpy array"
+        assert len(f) > 0, "f cannot be empty"
+        _n = int(np.log2(len(f)))
+        assert np.ceil(np.log2(len(f))) - _n <= 0.000001, "f must be of size 2^n, n >= 0"
         if type(f) == list:
             f = np.array(f)
+        
         self.f = f
-        if len(self.f) == 0:
-            self.n = 0
-        else:
-            self.n = int(np.log2(len(f)))
+        self.n = _n
     
     def to_cana_BooleanNode(self):
         """
@@ -58,7 +59,7 @@ class BooleanFunction:
         """
         if __LOADED_CANA__:
             return cana.boolean_node.BooleanNode(k=self.n, outputs=self.f)
-        print('The method \'get_effective_degree\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
+        print('The method \'to_cana_BooleanNode\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
         return None
     
     def to_pybooleannet_xxxxx(self):
@@ -395,10 +396,11 @@ class BooleanFunction:
         Returns:
             tuple: A tuple containing:
                 - bool: True if f is k-canalizing, False otherwise.
-                - np.array: Array of canalizing input values.
-                - np.array: Array of canalized output values.
-                - np.array: The core function (remaining truth table) after removing canalizing variables.
-                - np.array: Array of indices indicating the order of canalizing variables.
+                - dict: A dictionary containing:
+                    - CanalizingInputs (np.array): Array of canalizing input values.
+                    - CanalizingOutputs (np.array): Array of canalized output values.
+                    - CoreFunction (np.array): The core function (remaining truth table) after removing canalizing variables.
+                    - OrderOfVariables (np.array): Array of indices indicating the order of canalizing variables.
         
         References:
             He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
@@ -406,7 +408,13 @@ class BooleanFunction:
             Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
                 Algorithms and applications. Automatica, 146, 110630.
         """
-        return self._is_k_canalizing_return_canalizing_structure(k,can_inputs=np.array([], dtype=int),can_outputs=np.array([], dtype=int), can_order=np.array([], dtype=int),variables=[])
+        is_k_canalizing, inputs, outputs, core, order = self._is_k_canalizing_return_canalizing_structure(k,can_inputs=np.array([], dtype=int),can_outputs=np.array([], dtype=int), can_order=np.array([], dtype=int),variables=[])
+        return (is_k_canalizing, {
+            "CanalizingInputs" : inputs,
+            "CanalizingOutputs" : outputs,
+            "CoreFunction" : core,
+            "OrderOfVariables" : order
+            })
 
 
     def _find_layers(self, can_inputs, can_outputs, can_order, variables, depth, number_layers):
@@ -466,13 +474,13 @@ class BooleanFunction:
         the core polynomial, and the order of the canalizing variables.
 
         Returns:
-            tuple: A tuple containing:
-                - int: Canalizing depth (number of conditionally canalizing variables).
-                - int: Number of distinct canalizing layers.
-                - np.array: Array of canalizing input values.
-                - np.array: Array of canalized output values.
-                - np.array: The core polynomial (truth table) after removing canalizing variables.
-                - np.array: Array of indices representing the order of canalizing variables.
+            dict: A dictionary containing:
+                - Depth (int): Canalizing depth (number of conditionally canalizing variables).
+                - NumberOfLayers (int): Number of distinct canalizing layers.
+                - CanalizingInputs (np.array): Array of canalizing input values.
+                - CanalizingOutputs (np.array): Array of canalized output values.
+                - CoreFunction (np.array): The core polynomial (truth table) after removing canalizing variables.
+                - OrderOfVariables (np.array): Array of indices representing the order of canalizing variables.
         
         References:
             He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
@@ -480,8 +488,9 @@ class BooleanFunction:
             Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
                 Algorithms and applications. Automatica, 146, 110630.
         """
-        return self._find_layers(can_inputs=np.array([], dtype=int), can_outputs=np.array([], dtype=int),
-                                 can_order=np.array([], dtype=int), variables=[], depth=0, number_layers=0)
+        return dict(zip(["Depth", "NumberOfLayers", "CanalizingInputs", "CanalizingOutputs", "CoreFunction", "OrderOfVariables"],
+                        self._find_layers(can_inputs=np.array([], dtype=int), can_outputs=np.array([], dtype=int),
+                                 can_order=np.array([], dtype=int), variables=[], depth=0, number_layers=0)))
     
     def get_proportion_of_collectively_canalizing_input_sets(self, k, left_side_of_truth_table=None, verbose=False):
         """
@@ -637,11 +646,3 @@ class BooleanFunction:
             return sum(self.get_edge_effectiveness())
         print('The method \'get_effective_degree\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
         return None
-
-
-
-    
-    
-
-
-        

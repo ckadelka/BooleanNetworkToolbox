@@ -189,7 +189,7 @@ def is_k_canalizing(bf, k):
     return bf.is_k_canalizing(k)
 
 
-def is_k_canalizing_return_inputs_outputs_corefunction(bf, k, can_inputs=np.array([], dtype=int), can_outputs=np.array([], dtype=int)):
+def is_k_canalizing_return_canalizing_structure(bf, k):
     """
     Determine if a Boolean function is k-canalizing and return associated canalizing data.
 
@@ -208,9 +208,11 @@ def is_k_canalizing_return_inputs_outputs_corefunction(bf, k, can_inputs=np.arra
     Returns:
         tuple: A tuple containing:
             - bool: True if f is k-canalizing, False otherwise.
-            - np.array: Array of canalizing input values.
-            - np.array: Array of canalized output values.
-            - np.array: The core function (remaining truth table) after canalizing variables are removed.
+            - dict: A dictionary containing:
+                - CanalizingInputs (np.array): Array of canalizing input values.
+                - CanalizingOutputs (np.array): Array of canalized output values.
+                - CoreFunction (np.array): The core function (remaining truth table) after removing canalizing variables.
+                - OrderOfVariables (np.array): Array of indices indicating the order of canalizing variables.
     
     References:
         He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
@@ -218,49 +220,9 @@ def is_k_canalizing_return_inputs_outputs_corefunction(bf, k, can_inputs=np.arra
         Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
             Algorithms and applications. Automatica, 146, 110630.
     """
-    return bf.is_k_canalizing_return_inputs_outputs_corefunction(k, can_inputs, can_outputs)
+    return bf.is_k_canalizing_return_canalizing_structure(k)
 
-
-def is_k_canalizing_return_inputs_outputs_corefunction_order(bf, k, can_inputs=np.array([], dtype=int),
-                                                            can_outputs=np.array([], dtype=int), can_order=np.array([], dtype=int),
-                                                            variables=[]):
-    """
-    Determine if a Boolean function is k-canalizing and return canalizing data including variable order.
-
-    This function extends the k-canalizing check by additionally returning the order (indices) of the canalizing variables.
-    It recursively collects:
-      - Canalizing input values.
-      - Canalized output values.
-      - The core function after removing the canalizing layers.
-      - The order of the canalizing variables.
-
-    Parameters:
-        bf (BooleanFunction): Boolean function object.
-        k (int): The canalizing depth to check.
-        can_inputs (np.array, optional): Accumulated canalizing input values.
-        can_outputs (np.array, optional): Accumulated canalized output values.
-        can_order (np.array, optional): Accumulated order (indices) of canalizing variables.
-        variables (list, optional): List of variable indices. If empty, defaults to range(n).
-
-    Returns:
-        tuple: A tuple containing:
-            - bool: True if f is k-canalizing, False otherwise.
-            - np.array: Array of canalizing input values.
-            - np.array: Array of canalized output values.
-            - np.array: The core function (remaining truth table) after removing canalizing variables.
-            - np.array: Array of indices indicating the order of canalizing variables.
-    
-    References:
-        He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
-            Physica D: Nonlinear Phenomena, 314, 1-8.
-        Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
-            Algorithms and applications. Automatica, 146, 110630.
-    """
-    return bf.is_k_canalizing_return_inputs_outputs_corefunction_order(k, can_inputs, can_outputs, can_order, variables)
-
-
-def find_layers(bf, can_inputs=np.array([], dtype=int), can_outputs=np.array([], dtype=int),
-                can_order=np.array([], dtype=int), variables=[], depth=0, number_layers=0):
+def find_layers(bf):
     """
     Determine the canalizing layer structure of a Boolean function.
 
@@ -279,13 +241,14 @@ def find_layers(bf, can_inputs=np.array([], dtype=int), can_outputs=np.array([],
         number_layers (int, optional): Current number of layers identified (for recursion); default is 0.
 
     Returns:
-        tuple: A tuple containing:
-            - int: Canalizing depth (number of conditionally canalizing variables).
-            - int: Number of distinct canalizing layers.
-            - np.array: Array of canalizing input values.
-            - np.array: Array of canalized output values.
-            - np.array: The core polynomial (truth table) after removing canalizing variables.
-            - np.array: Array of indices representing the order of canalizing variables.
+        Returns:
+            dict: A dictionary containing:
+                - Depth (int): Canalizing depth (number of conditionally canalizing variables).
+                - NumberOfLayers (int): Number of distinct canalizing layers.
+                - CanalizingInputs (np.array): Array of canalizing input values.
+                - CanalizingOutputs (np.array): Array of canalized output values.
+                - CoreFunction (np.array): The core polynomial (truth table) after removing canalizing variables.
+                - OrderOfVariables (np.array): Array of indices representing the order of canalizing variables.
     
     References:
         He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
@@ -293,7 +256,7 @@ def find_layers(bf, can_inputs=np.array([], dtype=int), can_outputs=np.array([],
         Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
             Algorithms and applications. Automatica, 146, 110630.
     """
-    return bf.find_layers(can_inputs, can_outputs, can_order, variables, depth, number_layers)
+    return bf.find_layers()
     
 
 def get_layerstructure_given_canalizing_outputs_and_corefunction(can_outputs, core_polynomial):
