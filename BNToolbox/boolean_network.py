@@ -17,19 +17,46 @@ from collections import defaultdict
 import utils
 from boolean_function import BooleanFunction as BF
 
+try:
+    import cana.boolean_network
+    __LOADED_CANA__=True
+except ModuleNotFoundError:
+    print('The module cana cannot be found. Ensure it is installed to use all functionality of this toolbox.')
+    __LOADED_CANA__=False
+
+def from_cana_BooleanNetwork(BooleanNetwork):
+    return BooleanNetwork(F = xxx, I = xxx)#TODO: figure out what exactly to pass
+
+def from_pybooleannet_xxxxx(xxxxx):
+    return BooleanNetwork(F = xxx, I = xxx)#TODO: figure out what exactly to pass
+
 class BooleanNetwork:
-    def __init__(self, F, I, ns, left_side_of_truth_table = None):
+    def __init__(self, F, I, left_side_of_truth_table = None):
         assert type(F) in [ list, np.array, np.ndarray ], "F must be an array"
         assert type(I) in [ list, np.array, np.ndarray ], "I must be an array"
-        assert type(ns) in [ list, np.array, np.ndarray ], "ns must be an array"
-        assert (len(I[i]) == ns[i] for i in range(len(ns))), "Malformed wiring diagram I"
-        self.F = F
+        #assert (len(I[i]) == ns[i] for i in range(len(ns))), "Malformed wiring diagram I"
+        
+        self.F = []
+        for f in F:
+            if type(f) in [list,np.array]:
+                self.F.append(BF(f))
+            elif type(f)==BF:
+                self.F.append(f)
+            else:
+                raise #TODO: raise error
+                
         self.N = len(F)
         self.I = I
-        self.ns = ns
-        self.lstt = left_side_of_truth_table
+        self.lstt = left_side_of_truth_table #TODO: pass as argument in the two functions that use it
     
-    def update_single_node(bf, states_regulators):
+    def to_cana_BooleanNetwork(self):
+        return cana.boolean_network.BooleanNetwork(xxxxx)#TODO: figure out what exactly to pass
+
+    def to_pybooleannet_xxxxx(self):
+        return pybooleannet.xxxxxx(xxxxx)#TODO: figure out what exactly to pass
+        
+    
+    def update_single_node(self, index, states_regulators):
         """
         Update the state of a single node.
 
@@ -43,7 +70,7 @@ class BooleanNetwork:
         Returns:
             int: Updated state of the node (0 or 1).
         """
-        return bf.f[utils.bin2dec(states_regulators)]
+        return self.F[index][utils.bin2dec(states_regulators)]
 
 
     def update_network_synchronously(self, X):
@@ -60,9 +87,9 @@ class BooleanNetwork:
         """
         if type(X)==list:
             X = np.array(X)
-        Fx = np.zeros(len(self.F), dtype=int)
-        for i in range(len(self.F)):
-            Fx[i] = self.update_single_node(bf = self.F[i], states_regulators = X[self.I[i]])
+        Fx = np.zeros(self.N, dtype=int)
+        for i in range(self.N):
+            Fx[i] = self.update_single_node(index = i, states_regulators = X[self.I[i]])
         return Fx
 
 
@@ -106,8 +133,8 @@ class BooleanNetwork:
         if type(X)==list:
             X = np.array(X)
         Fx = X.copy()
-        for i in range(len(self.F)):
-            nextstep = self.update_single_node(bf = self.F[i], states_regulators = X[self.I[i]])
+        for i in range(self.N):
+            nextstep = self.update_single_node(index = i, states_regulators = X[self.I[i]])
             if nextstep > X[i] and random.random() < P[i, 0]:  # activation
                 Fx[i] = nextstep
             elif nextstep < X[i] and random.random() < P[i, 1]:  # degradation
@@ -146,7 +173,7 @@ class BooleanNetwork:
                 - SEED (int): The random seed used for the simulation.
                 - initial_sample_points (list): The list of initial sample points used (if provided) or those generated during simulation.
         """
-        if EXACT and (self.lstt == [] or self.lstt == None):
+        if EXACT and self.lstt is None:
             self.lstt = list(map(np.array, list(itertools.product([0, 1], repeat=self.N))))
 
         sampled_points = []
@@ -196,7 +223,7 @@ class BooleanNetwork:
                                 FOUND_NEW_STATE = True
                                 x[i] = 1 - x[i]
                         except KeyError:
-                            fx_i = self.update_single_node(self.F[i], x[self.I[i]])
+                            fx_i = self.update_single_node(i, x[self.I[i]])
                             if fx_i > x[i]:
                                 fxdec = xdec + 2**(self.N - 1 - i)
                                 x[i] = 1
@@ -303,7 +330,7 @@ class BooleanNetwork:
                                 FOUND_NEW_STATE = True
                                 x[i] = 1 - x[i]
                         except KeyError:
-                            fx_i = self.update_single_node(self.F[i], x[self.I[i]])
+                            fx_i = self.update_single_node(i, x[self.I[i]])
                             if fx_i > x[i]:
                                 fxdec = xdec + 2**(self.N - 1 - i)
                                 x[i] = 1
@@ -537,11 +564,10 @@ class BooleanNetwork:
                 F_essential.append(bf)
                 I_essential.append(regulators)
             else:
-                if self.lstt == None or self.lstt == []:
-                    self.lstt = np.array(list(itertools.product([0, 1], repeat=n)))
-                F_essential.append(BF(bf.f[np.sum(self.lstt[:, non_essential_variables], 1) == 0]))
+                lstt = np.array(list(itertools.product([0, 1], repeat=n)))
+                F_essential.append(BF(bf.f[np.sum(lstt[:, non_essential_variables], 1) == 0]))
                 I_essential.append(np.array(regulators)[essential_variables])
-        return F_essential, I_essential
+        return F_essential, I_essential #TODO: return an instanc eof BooleanNetwork
 
 
     def get_edge_controlled_network(self, control_target, control_source, type_of_edge_control=0, left_side_of_truth_table=[]):
@@ -579,8 +605,7 @@ class BooleanNetwork:
         dummy = list(I_new[control_target])
         dummy.remove(control_source)
         I_new[control_target] = np.array(dummy)
-        degrees_new = list(map(len, I_new))
-        return BooleanNetwork([BF(f) for f in F_new], I_new, degrees_new)
+        return BooleanNetwork(F_new, I_new)
 
     def get_external_inputs(self):
         """
@@ -591,7 +616,8 @@ class BooleanNetwork:
         Returns:
             np.array: Array of node indices that are external inputs.
         """
-        return np.array([i for i in range(self.N) if self.ns[i] == 1 and self.I[i][0] == i])
+        degrees = [len(el) for el in self.I]
+        return np.array([i for i in range(self.N) if degrees[i] == 1 and self.I[i][0] == i])
 
 
     ## Robustness measures: synchronous Derrida value, entropy of basin size distribution, coherence, fragility
@@ -776,7 +802,6 @@ class BooleanNetwork:
         
         height = []
         degrees = list(map(len, self.I))
-        print(degrees, self.ns)
         
         powers_of_2s = [np.array([2**i for i in range(NN)])[::-1] for NN in range(max(degrees)+1)]
         if self.N<64:

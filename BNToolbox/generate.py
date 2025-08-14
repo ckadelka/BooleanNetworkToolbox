@@ -272,17 +272,17 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
     return BF(f)
 
 
-def random_adjacency_matrix(N, ns, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=False):
+def random_adjacency_matrix(N, indegrees, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=False):
     """
     Generate a random adjacency matrix for a network of N nodes.
 
-    Each node i is assigned ns[i] outgoing edges (regulators) chosen at random.
+    Each node i is assigned indegrees[i] outgoing edges (regulators) chosen at random.
     Optionally, self-regulation (an edge from a node to itself) can be disallowed,
     and the generated network can be forced to be strongly connected.
 
     Parameters:
         N (int): Number of nodes.
-        ns (list or array-like): List of length N specifying the number of outgoing edges for each node.
+        indegrees (list or array-like): List of length N specifying the number of outgoing edges for each node.
         NO_SELF_REGULATION (bool, optional): If True, self-regulation is disallowed (default is True).
         STRONGLY_CONNECTED (bool, optional): If True, the generated network is forced to be strongly connected (default is False).
 
@@ -295,9 +295,9 @@ def random_adjacency_matrix(N, ns, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=F
     indices = []
     for i in range(N):
         if NO_SELF_REGULATION:
-            indexes = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), ns[i], replace=False)
+            indexes = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), indegrees[i], replace=False)
         else:
-            indexes = np.random.choice(np.arange(N), ns[i], replace=False)
+            indexes = np.random.choice(np.arange(N), indegrees[i], replace=False)
         indexes = np.sort(indexes)
         indices.append(indexes)
         for index in indexes:
@@ -305,20 +305,20 @@ def random_adjacency_matrix(N, ns, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=F
     if STRONGLY_CONNECTED:
         G = nx.from_numpy_array(matrix, parallel_edges=False, create_using=nx.MultiDiGraph())
         if not nx.is_strongly_connected(G):
-            return random_adjacency_matrix(N, ns, NO_SELF_REGULATION, STRONGLY_CONNECTED)
+            return random_adjacency_matrix(N, indegrees, NO_SELF_REGULATION, STRONGLY_CONNECTED)
     return (matrix, indices)
 
     
-def random_edge_list(N, ns, NO_SELF_REGULATION, AT_LEAST_ONE_REGULATOR_PER_NODE=False):
+def random_edge_list(N, indegrees, NO_SELF_REGULATION, AT_LEAST_ONE_REGULATOR_PER_NODE=False):
     """
     Generate a random edge list for a network of N nodes with optional constraints.
 
-    Each node i receives ns[i] incoming edges chosen at random.
+    Each node i receives indegrees[i] incoming edges chosen at random.
     Optionally, the function can ensure that every node regulates at least one other node.
 
     Parameters:
         N (int): Number of nodes.
-        ns (list or array-like): List of length N specifying the number of regulators for each node.
+        indegrees (list or array-like): List of length N specifying the number of regulators for each node.
         NO_SELF_REGULATION (bool): If True, disallow self-regulation.
         AT_LEAST_ONE_REGULATOR_PER_NODE (bool, optional): If True, ensure that each node has at least one outgoing edge (default is False).
 
@@ -329,27 +329,27 @@ def random_edge_list(N, ns, NO_SELF_REGULATION, AT_LEAST_ONE_REGULATOR_PER_NODE=
         edge_list = []
         for i in range(N):
             if NO_SELF_REGULATION:
-                indices = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), ns[i], replace=False)
+                indices = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), indegrees[i], replace=False)
             else:
-                indices = np.random.choice(np.arange(N), ns[i], replace=False)
-            edge_list.extend(list(zip(indices, i * np.ones(ns[i], dtype=int))))
+                indices = np.random.choice(np.arange(N), indegrees[i], replace=False)
+            edge_list.extend(list(zip(indices, i * np.ones(indegrees[i], dtype=int))))
     else:
         edge_list = []
         outdegree = np.zeros(N, dtype=int)
-        sum_ns = sum(ns)  # total number of regulations
+        sum_indegrees = sum(indegrees)  # total number of regulations
         for i in range(N):
             if NO_SELF_REGULATION:
-                indices = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), ns[i], replace=False)
+                indices = np.random.choice(np.append(np.arange(i), np.arange(i+1, N)), indegrees[i], replace=False)
             else:
-                indices = np.random.choice(np.arange(N), ns[i], replace=False)
+                indices = np.random.choice(np.arange(N), indegrees[i], replace=False)
             outdegree[indices] += 1
-            edge_list.extend(list(zip(indices, i * np.ones(ns[i], dtype=int))))
+            edge_list.extend(list(zip(indices, i * np.ones(indegrees[i], dtype=int))))
         while min(outdegree) == 0:
             index_sink = np.where(outdegree == 0)[0][0]
-            index_edge = int(random.random() * sum_ns)
+            index_edge = int(random.random() * sum_indegrees)
             if NO_SELF_REGULATION:
                 while edge_list[index_edge][1] == index_sink:
-                    index_edge = int(random.random() * sum_ns)
+                    index_edge = int(random.random() * sum_indegrees)
             outdegree[index_sink] += 1
             outdegree[edge_list[index_edge][0]] -= 1
             edge_list[index_edge] = (index_sink, edge_list[index_edge][1])
@@ -394,16 +394,16 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
     # Generate the in-degree based on the specified in-degree distribution and the in-degree parameter n. If n is a vector of length N, this is used as in-degree.
     if type(n) in [list, np.array]:
         assert (np.all([type(el) in [int, np.int_] for el in n]) and len(n) == N and min(n) >= 1 and max(n) <= N), 'A vector n was submitted.\nEnsure that n is an N-dimensional vector where each element is an integer between 1 and N representing the upper bound of a uniform degree distribution (lower bound == 1).'
-        ns = np.array(n[:])
+        indegrees = np.array(n[:])
     elif indegree_distribution.lower() in ['constant', 'dirac', 'delta']:
         assert (type(n) in [int, np.int_] and n >= 1 and n <= N), 'n must be a single integer (or N-dimensional vector of integers) between 1 and N when using a constant degree distribution.'
-        ns = np.ones(N, dtype=int) * n
+        indegrees = np.ones(N, dtype=int) * n
     elif indegree_distribution.lower() == 'uniform':
         assert (type(n) in [int, np.int_] and n >= 1 and n <= N - int(NO_SELF_REGULATION)), 'n must be a single integer (or N-dimensional vector of integers) between 1 and ' + ('N-1' if NO_SELF_REGULATION else 'N')+' representing the upper bound of a uniform degree distribution (lower bound == 1).'
-        ns = 1 + np.random.randint(n - 1, size=N)
+        indegrees = 1 + np.random.randint(n - 1, size=N)
     elif indegree_distribution.lower() == 'poisson':
         assert (type(n) in [int, np.int_, float, np.float_] and n>= 1 and n<=N), 'n must be a single number (or N-dimensional vector) > 0 representing the Poisson parameter.'
-        ns = np.maximum(np.minimum(np.random.poisson(lam=n, size=N),N - int(NO_SELF_REGULATION)), 1)
+        indegrees = np.maximum(np.minimum(np.random.poisson(lam=n, size=N),N - int(NO_SELF_REGULATION)), 1)
     else:
         raise AssertionError('None of the predefined in-degree distributions were chosen.\nTo use a user-defined in-degree vector, use the input n to submit an N-dimensional vector where each element of n must an integer between 1 and N.')
 
@@ -430,23 +430,23 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
     if edges_wiring_diagram is None:
         counter = 0
         while True:  # Keep generating until we have a strongly connected graph
-            edges_wiring_diagram = random_edge_list(N, ns, NO_SELF_REGULATION)
+            edges_wiring_diagram = random_edge_list(N, indegrees, NO_SELF_REGULATION)
             if STRONGLY_CONNECTED:#may take a long time if n is small and N is large
                 G = nx.from_edgelist(edges_wiring_diagram, create_using=nx.MultiDiGraph())
                 if not nx.is_strongly_connected(G):
                     counter+=1
                     if counter>n_attempts_to_generate_strongly_connected_network:
-                        raise RuntimeError('Made '+str(n_attempts_to_generate_strongly_connected_network)+' unsuccessful attempts to generate a strongly connected wiring diagram of '+str(N)+' nodes and degrees '+str(ns)+'.\nYou may increase the number of attempts by modulating the parameter n_attempts_to_generate_strongly_connected_network.')
+                        raise RuntimeError('Made '+str(n_attempts_to_generate_strongly_connected_network)+' unsuccessful attempts to generate a strongly connected wiring diagram of '+str(N)+' nodes and degrees '+str(indegrees)+'.\nYou may increase the number of attempts by modulating the parameter n_attempts_to_generate_strongly_connected_network.')
                     continue
             break
     else:
         assert len(set(np.array(edges_wiring_diagram).flatten())) == N, "Number of nodes provided in edges_wiring_diagram != N"
-        ns = np.zeros(N, dtype=int)
+        indegrees = np.zeros(N, dtype=int)
         for target in np.array(edges_wiring_diagram)[:, 1]:
-            ns[target] += 1
+            indegrees[target] += 1
 
 
-    max_n = max(ns)
+    max_n = max(indegrees)
     if max_k > 0 and (left_sides_of_truth_tables is None or len(left_sides_of_truth_tables) < max_n):
         left_sides_of_truth_tables = [[[0], [1]]]
         left_sides_of_truth_tables.extend([list(itertools.product([0, 1], repeat=nn)) for nn in range(2, max_n + 1)])
@@ -454,27 +454,27 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
     F = []
     for i in range(N):
         if LINEAR:
-            F.append(random_linear_function(ns[i]))
+            F.append(random_linear_function(indegrees[i]))
         if k > 0 and layerstructure is None:
             if type(k) in [int, np.int_]:
-                F.append(random_k_canalizing(ns[i], min(k, ns[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[ns[i]-1]))
+                F.append(random_k_canalizing(indegrees[i], min(k, indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
-                F.append(random_k_canalizing(ns[i], min(k[i], ns[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[ns[i]-1]))
+                F.append(random_k_canalizing(indegrees[i], min(k[i], indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
         elif layerstructure is not None:
             if np.all([type(el) in [int, np.int_] for el in layerstructure]):
-                F.append(random_k_canalizing_with_specific_layerstructure(ns[i], layerstructure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[ns[i]-1]))
+                F.append(random_k_canalizing_with_specific_layerstructure(indegrees[i], layerstructure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
-                F.append(random_k_canalizing_with_specific_layerstructure(ns[i], layerstructure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[ns[i]-1]))
+                F.append(random_k_canalizing_with_specific_layerstructure(indegrees[i], layerstructure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
         else:
             if EXACT_DEPTH is True:
-                F.append(random_non_canalizing_non_degenerated_function(ns[i], bias))
+                F.append(random_non_canalizing_non_degenerated_function(indegrees[i], bias))
             else:
-                F.append(random_non_degenerated_function(ns[i], bias))
+                F.append(random_non_degenerated_function(indegrees[i], bias))
 
     I = [[] for _ in range(N)]
     for edge in edges_wiring_diagram:
         I[edge[1]].append(edge[0])
     for i in range(N):
         I[i] = np.sort(I[i])
-    return BN(F, I, ns)
+    return BN(F, I)
 
