@@ -38,6 +38,21 @@ def from_pybooleannet_xxxxx(xxxxx):
     return BooleanFunction(f = xxx)#TODO: figure out what exactly to pass
 
 
+def get_layer_structure_from_can_outputs(can_outputs):
+    canalizing_depth = len(can_outputs)
+    if canalizing_depth == 0:
+        return []
+    size_of_layer = 1
+    layer_structure = []
+    for i in range(1, canalizing_depth):
+        if can_outputs[i] == can_outputs[i - 1]:
+            size_of_layer += 1
+        else:
+            layer_structure.append(size_of_layer)
+            size_of_layer = 1
+    layer_structure.append(size_of_layer)
+    return layer_structure
+
 class BooleanFunction:
     def __init__(self, f):
         assert type(f) in [ list, np.array, np.ndarray ], "f must be either a list or numpy array"
@@ -285,7 +300,7 @@ class BooleanFunction:
         else:
             return False
     
-    def is_k_canalizing(self, k, __f__ = None):
+    def is_k_canalizing(self, k):
         """
         Determine if a Boolean function is k-canalizing.
 
@@ -305,82 +320,32 @@ class BooleanFunction:
             Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
                 Algorithms and applications. Automatica, 146, 110630.
         """
-        if __f__ == None:
-            __f__ = self.f
-        n = int(np.log2(len(__f__)))
-        if k > n:
+        if k > self.n:
             return False
         if k == 0:
             return True
 
-        w = sum(__f__)  # Hamming weight of f
-        if w == 0 or w == 2**n:  # constant function
+        w = sum(self.f)  # Hamming weight of f
+        if w == 0 or w == 2**self.n:  # constant function
             return False
-        if type(__f__) == list:
-            __f__ = np.array(__f__)
-        desired_value = 2**(n - 1)
-        T = np.array(list(itertools.product([0, 1], repeat=n))).T
-        A = np.r_[T, 1 - T]
-        try:  # check for canalizing output 1
-            index = list(np.dot(A, __f__)).index(desired_value)
-            new_f = __f__[np.where(A[index] == 0)[0]]
-            return self.is_k_canalizing(k - 1, __f__=new_f)
-        except ValueError:
-            try:  # check for canalizing output 0
-                index = list(np.dot(A, 1 - __f__)).index(desired_value)
-                new_f = __f__[np.where(A[index] == 0)[0]]
-                return self.is_k_canalizing(k - 1, __f__=new_f)
-            except ValueError:
-                return False
-
-
-    def _is_k_canalizing_return_canalizing_structure(self, k, can_inputs,can_outputs, can_order,variables):
-        """
-        Only for internal use by recursively defined is_k_canalizing_return_canalizing_structure.
-        """
-        if k == 0: #any function is 0-canalizing, can immediately return True
-            return (True, can_inputs, can_outputs, self, can_order)
-        w = sum(self.f)
-        if w == 0 or w == 2**self.n:  #eventually the recursion will end here (if self.f is a constant function)
-            return (False, can_inputs, can_outputs, self, can_order)
-        if type(variables) == np.ndarray:
-            variables = list(variables)
-        if variables == []:
-            variables = list(range(self.n))
         desired_value = 2**(self.n - 1)
         T = np.array(list(itertools.product([0, 1], repeat=self.n))).T
         A = np.r_[T, 1 - T]
-        if len(can_outputs)==0 or can_outputs[-1]==0:
-            CHECK_FOR_CANALIZED_VALUE_0_FIRST = True
-        else:
-            CHECK_FOR_CANALIZED_VALUE_0_FIRST = False
-        try:  # check for the first canalized output 
-            index = list(np.dot(A, 1 - self.f if CHECK_FOR_CANALIZED_VALUE_0_FIRST else self.f)).index(desired_value)
-            new_f = self.f[np.where(A[index] == 0)[0]]
-            variable = variables.pop(index % self.n)
-            new_bf = BooleanFunction(list(new_f))
-            return new_bf._is_k_canalizing_return_canalizing_structure(k - 1, 
-                                                                            np.append(can_inputs, int(index < self.n)),
-                                                                            np.append(can_outputs, (0 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 1)),
-                                                                            np.append(can_order, variable),
-                                                                            variables)
+        try:  # check for canalizing output 1
+            index = list(np.dot(A, self.f)).index(desired_value)
+            new_bf = BooleanFunction(self.f[np.where(A[index] == 0)[0]])
+            return new_bf.is_k_canalizing(k - 1)
         except ValueError:
-            try:  # check for canalized output 1
-                index = list(np.dot(A, self.f if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 1-self.f)).index(desired_value)
-                new_f = self.f[np.where(A[index] == 0)[0]]
-                variable = variables.pop(index % self.n)
-                new_bf = BooleanFunction(list(new_f))
-                return new_bf._is_k_canalizing_return_canalizing_structure(k - 1, 
-                                                                                np.append(can_inputs, int(index < self.n)),
-                                                                                np.append(can_outputs, (1 if CHECK_FOR_CANALIZED_VALUE_0_FIRST else 0)),
-                                                                                np.append(can_order, variable),
-                                                                                variables)
-            except ValueError: #or the recursion will end here (if self.f is non-canalizing)
-                return (False, can_inputs, can_outputs, self, can_order)
-        
+            try:  # check for canalizing output 0
+                index = list(np.dot(A, 1 - self.f)).index(desired_value)
+                new_bf = BooleanFunction(self.f[np.where(A[index] == 0)[0]])
+                return new_bf.is_k_canalizing(k - 1)
+            except ValueError:
+                return False
 
-    def is_k_canalizing_return_canalizing_structure(self, k):
+    def _get_layer_structure(self, can_inputs, can_outputs, can_order, variables, depth, number_layers):
         """
+<<<<<<< HEAD
         Determine if a Boolean function is k-canalizing and return canalizing data including variable order.
 
         This function extends the k-canalizing check by additionally returning the order (indices) of the canalizing variables.
@@ -420,6 +385,9 @@ class BooleanFunction:
     def _find_layers(self, can_inputs, can_outputs, can_order, variables, depth, number_layers):
         """
         Only for internal use by recursively defined find_layers.
+=======
+        Only for internal use by recursively defined get_layer_structure.
+>>>>>>> 8c7f859 (added more tests and deleted useless functions)
         """
         n = self.n
         w = sum(self.f)
@@ -445,7 +413,7 @@ class BooleanFunction:
             new_canalizing_variables.reverse()
             new_f = self.f[np.sort(list(set.intersection(*[] + [set(np.where(A[index] == 0)[0]) for index, INPUT in zip(indices1, inputs)])))]
             new_bf = BooleanFunction(list(new_f))
-            return new_bf._find_layers(np.append(can_inputs, inputs), np.append(can_outputs, outputs),
+            return new_bf._get_layer_structure(np.append(can_inputs, inputs), np.append(can_outputs, outputs),
                                np.append(can_order, new_canalizing_variables), variables, depth + len(new_canalizing_variables),
                                number_layers + 1)
         elif len(indices0):
@@ -458,13 +426,14 @@ class BooleanFunction:
             new_canalizing_variables.reverse()
             new_f = self.f[np.sort(list(set.intersection(*[] + [set(np.where(A[index] == 0)[0]) for index, INPUT in zip(indices0, inputs)])))]
             new_bf = BooleanFunction(list(new_f))
-            return new_bf._find_layers(np.append(can_inputs, inputs), np.append(can_outputs, outputs),
+            return new_bf._get_layer_structure(np.append(can_inputs, inputs), np.append(can_outputs, outputs),
                                np.append(can_order, new_canalizing_variables), variables, depth + len(new_canalizing_variables),
                                number_layers + 1)
-        else:  #or the recursion will end here (if self.f is non-canalizing) 
+        else:  #or the recursion will end here (if self.f is non-canalizing)
+        
             return (depth, number_layers, can_inputs, can_outputs, self, can_order)        
 
-    def find_layers(self):
+    def get_layer_structure(self):
         """
         Determine the canalizing layer structure of a Boolean function.
 
@@ -488,9 +457,17 @@ class BooleanFunction:
             Dimitrova, E., Stigler, B., Kadelka, C., & Murrugarra, D. (2022). Revealing the canalizing structure of Boolean functions:
                 Algorithms and applications. Automatica, 146, 110630.
         """
+<<<<<<< HEAD
         return dict(zip(["Depth", "NumberOfLayers", "CanalizingInputs", "CanalizingOutputs", "CoreFunction", "OrderOfVariables"],
                         self._find_layers(can_inputs=np.array([], dtype=int), can_outputs=np.array([], dtype=int),
                                  can_order=np.array([], dtype=int), variables=[], depth=0, number_layers=0)))
+=======
+        return self._get_layer_structure(can_inputs=np.array([], dtype=int), 
+                                         can_outputs=np.array([], dtype=int),
+                                         can_order=np.array([], dtype=int), 
+                                         variables=[], depth=0, number_layers=0)
+    
+>>>>>>> 8c7f859 (added more tests and deleted useless functions)
     
     def get_proportion_of_collectively_canalizing_input_sets(self, k, left_side_of_truth_table=None, verbose=False):
         """

@@ -153,7 +153,7 @@ def random_non_canalizing_non_degenerated_function(n, probability_one=0.5):
             return f
 
 
-def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, activator_or_inhibitor=None):
+def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None):
     """
     Generate a random k-canalizing Boolean function in n variables.
 
@@ -165,7 +165,6 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, 
         k (int): Number of canalizing variables. Set k==n to generate a random nested canalizing function.
         EXACT_DEPTH (bool, optional): If True, enforce that the canalizing depth is exactly k (default is False).
         left_side_of_truth_table (optional): Precomputed left-hand side of the truth table for speed-up. Default is None.
-        activator_or_inhibitor (optional): Placeholder for future use; currently not utilized.
 
     Returns:
         BooleanFunction: Boolean function object.
@@ -207,19 +206,19 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, 
     return BF(f)
 
 
-def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DEPTH=False, left_side_of_truth_table=None):
+def random_k_canalizing_with_specific_layer_structure(n, layer_structure, EXACT_DEPTH=False, left_side_of_truth_table=None):
     """
     Generate a random Boolean function in n variables with a specified canalizing layer structure.
 
     The layer structure is given as a list [k_1, ..., k_r], where each k_i indicates the number of canalizing variables 
-    in that layer. If the function is fully canalizing (i.e. sum(layerstructure) == n and n > 1), the last layer must have at least 2 variables.
+    in that layer. If the function is fully canalizing (i.e. sum(layer_structure) == n and n > 1), the last layer must have at least 2 variables.
 
     Parameters:
         n (int): Total number of variables.
-        layerstructure (list): List [k_1, ..., k_r] describing the canalizing layer structure.
-                               Each k_i ≥ 1, and if sum(layerstructure) == n and n > 1, then layerstructure[-1] ≥ 2.
-                               Set sum(layerstructure)==n to generate a random nested canalizing function.
-        EXACT_DEPTH (bool, optional): If True, the canalizing depth is exactly sum(layerstructure) (default is False).
+        layer_structure (list): List [k_1, ..., k_r] describing the canalizing layer structure.
+                               Each k_i ≥ 1, and if sum(layer_structure) == n and n > 1, then layer_structure[-1] ≥ 2.
+                               Set sum(layer_structure)==n to generate a random nested canalizing function.
+        EXACT_DEPTH (bool, optional): If True, the canalizing depth is exactly sum(layer_structure) (default is False).
         left_side_of_truth_table (optional): Precomputed left-hand side of the truth table for speed-up. Default is None.
 
     Returns:
@@ -231,26 +230,26 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
         [2] Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
             of Boolean networks. Physica D: Nonlinear Phenomena, 353, 39-47.
     """
-    k = sum(layerstructure)  # canalizing depth
+    k = sum(layer_structure)  # canalizing depth
     if k == 0:
-        layerstructure = [0]
+        layer_structure = [0]
         
-    assert n - k != 1 or EXACT_DEPTH == False,'Error:\nThere are no functions of exact canalizing depth n-1.\nEither set EXACT_DEPTH=False or ensure k=sum(layerstructure)!=n-1.'
-    assert 0 <= k and k <= n,'Error:\nEnsure 0 <= k = sum(layerstructure) <= n.'
-    assert k < n or layerstructure[-1] > 1 or n == 1,'Error:\nThe last layer of an NCF (i.e., an n-canalizing function) has to have size >= 2 whenever n > 1.\nIf k=sum(layerstructure)=n, ensure that layerstructure[-1]>=2.'
-    assert min(layerstructure) >= 1,'Error:\nEach layer must have at least one variable (each element of layerstructure must be >= 1).'
+    assert n - k != 1 or EXACT_DEPTH == False,'Error:\nThere are no functions of exact canalizing depth n-1.\nEither set EXACT_DEPTH=False or ensure k=sum(layer_structure)!=n-1.'
+    assert 0 <= k and k <= n,'Error:\nEnsure 0 <= k = sum(layer_structure) <= n.'
+    assert k < n or layer_structure[-1] > 1 or n == 1,'Error:\nThe last layer of an NCF (i.e., an n-canalizing function) has to have size >= 2 whenever n > 1.\nIf k=sum(layer_structure)=n, ensure that layer_structure[-1]>=2.'
+    assert min(layer_structure) >= 1,'Error:\nEach layer must have at least one variable (each element of layer_structure must be >= 1).'
     
     if left_side_of_truth_table is None:  # to decrease run time, this should be computed once and then passed as argument
         left_side_of_truth_table = list(itertools.product([0, 1], repeat=n))
     num_values = 2**n
     aas = np.random.randint(2, size=k)  # canalizing inputs
     b0 = np.random.randint(2)
-    bbs = [b0] * layerstructure[0]  # canalized outputs for first layer
-    for i in range(1, len(layerstructure)):
+    bbs = [b0] * layer_structure[0]  # canalized outputs for first layer
+    for i in range(1, len(layer_structure)):
         if i % 2 == 0:
-            bbs.extend([b0] * layerstructure[i])
+            bbs.extend([b0] * layer_structure[i])
         else:
-            bbs.extend([1 - b0] * layerstructure[i])
+            bbs.extend([1 - b0] * layer_structure[i])
     can_vars = np.random.choice(n, k, replace=False)
     f = np.zeros(num_values, dtype=int)
     if k < n:
@@ -270,6 +269,79 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
             f[i] = core_polynomial[counter_non_canalized_positions]
             counter_non_canalized_positions += 1
     return BF(f)
+
+
+def random_NCF(n,layer_structure=None,left_side_of_truth_table=None):
+    '''
+    Generate a random nested canalizing Boolean function in n variables 
+    with a specified canalizing layer structure (if provided).
+
+    The layer structure is given as a list [k_1, ..., k_r], where each k_i indicates the number of canalizing variables 
+    in that layer. If the function is fully canalizing (i.e. sum(layer_structure) == n and n > 1), the last layer must have at least 2 variables.
+
+    Parameters:
+        n (int): Total number of variables.
+        layer_structure (list,optional): List [k_1, ..., k_r] describing the canalizing layer structure.
+                               Each k_i ≥ 1, and if sum(layer_structure) == n and n > 1, then layer_structure[-1] ≥ 2.
+                               Set sum(layer_structure)==n to generate a random nested canalizing function.
+        left_side_of_truth_table (optional): Precomputed left-hand side of the truth table for speed-up. Default is None.
+
+    Returns:
+        BooleanFunction: Boolean function object.
+    
+    References:
+        [1] He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
+            Physica D: Nonlinear Phenomena, 314, 1-8.
+        [2] Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
+            of Boolean networks. Physica D: Nonlinear Phenomena, 353, 39-47.
+    '''    
+    if layer_structure is None:
+        return random_k_canalizing(n,n,EXACT_DEPTH=False,left_side_of_truth_table=left_side_of_truth_table)
+    else:
+        assert sum(layer_structure) == n,'Error:\nEnsure sum(layer_structure) == n.'
+        assert layer_structure[-1] > 1 or n == 1,'Error:\nThe last layer of an NCF has to have size >= 2 whenever n > 1.\nEnsure that layer_structure[-1]>=2.'
+        return random_k_canalizing_with_specific_layer_structure(n,layer_structure,EXACT_DEPTH=False, left_side_of_truth_table=left_side_of_truth_table)
+
+
+def get_layer_structure_of_an_NCF_given_its_Hamming_weight(n, w):
+    """
+    Compute the canalizing layer structure of a nested canalizing function (NCF) given its Hamming weight.
+
+    There exists a bijection between the Hamming weight (with w equivalent to 2^n - w) and the canalizing layer structure of an NCF.
+    The layer structure is represented as [k_1, ..., k_r], where each k_i ≥ 1 and, if n > 1, for the last layer k_r ≥ 2.
+
+    Parameters:
+        n (int): Number of inputs (variables) of the NCF.
+        w (int): Odd Hamming weight of the NCF, i.e., the number of 1s in the 2^n-vector representation of the function.
+
+    Returns:
+        tuple: A tuple (r, layer_structure_NCF), where:
+            - r (int): The number of canalizing layers.
+            - layer_structure_NCF (list): A list [k_1, ..., k_r] describing the number of variables in each layer.
+
+    References:
+        Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness of Boolean networks.
+        Physica D: Nonlinear Phenomena, 353, 39-47.
+    """
+    if w == 1:
+        r = 1
+        layer_structure_NCF = [n]
+    else:
+        assert type(w) == int or type(w) == np.int64, 'Hamming weight must be an integer'
+        assert 1 <= w <= 2**n - 1, 'Hamming weight w must satisfy 1 <= w <= 2^n - 1'
+        assert w % 2 == 1, 'Hamming weight must be an odd integer since all NCFs have an odd Hamming weight.'
+        w_bin = utils.dec2bin(w, n)
+        current_el = w_bin[0]
+        layer_structure_NCF = [1]
+        for el in w_bin[1:-1]:
+            if el == current_el:
+                layer_structure_NCF[-1] += 1
+            else:
+                layer_structure_NCF.append(1)
+                current_el = el
+        layer_structure_NCF[-1] += 1
+        r = len(layer_structure_NCF)
+    return (r, layer_structure_NCF)
 
 
 def random_adjacency_matrix(N, indegrees, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=False):
@@ -357,7 +429,7 @@ def random_edge_list(N, indegrees, NO_SELF_REGULATION, AT_LEAST_ONE_REGULATOR_PE
 
 
 def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='constant',
-              left_sides_of_truth_tables=None, layerstructure=None, EXACT_DEPTH=False, NO_SELF_REGULATION=True, LINEAR=False,
+              left_sides_of_truth_tables=None, layer_structure=None, EXACT_DEPTH=False, NO_SELF_REGULATION=True, LINEAR=False,
               edges_wiring_diagram=None, bias=0.5, n_attempts_to_generate_strongly_connected_network = 1000):
     """
     Generate a random Boolean network (BN).
@@ -379,13 +451,13 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
         indegree_distribution (str, optional): In-degree distribution to use. Options include 'constant' (or 'dirac'/'delta'),
                                                'uniform', or 'poisson'. Default is 'constant'.
         left_sides_of_truth_tables (list, optional): Precomputed truth tables (lists of tuples) for different in-degrees, used for speed-up. Default is None and it is computed every time.
-        layerstructure (optional): Specifies the canalizing layer structure for the Boolean functions. If provided, the parameter k is ignored.
+        layer_structure (optional): Specifies the canalizing layer structure for the Boolean functions. If provided, the parameter k is ignored.
         EXACT_DEPTH (bool, optional): If True, Boolean functions are generated with exactly the specified canalizing depth;
                                       if False, the functions have at least that depth. Default is False.
         NO_SELF_REGULATION (bool, optional): If True, self-regulation (self-loops) is disallowed. Default is True.
         LINEAR (bool, optional): If True, Boolean functions are generated to be linear. Default is False.
         edges_wiring_diagram (optional): User-defined edge list for the wiring diagram. If provided, the parameters n and indegree_distribution are ignored.
-        bias (float, optional): Bias of generated Boolean functions (probability of output 1). Default is 0.5. Ignored unless k==0 and LINEAR==False and layerstructure is None.
+        bias (float, optional): Bias of generated Boolean functions (probability of output 1). Default is 0.5. Ignored unless k==0 and LINEAR==False and layer_structure is None.
         n_attempts_to_generate_strongly_connected_network (integer, optional): Number of attempts to generate a strongly connected wiring diagram before raising an error and quitting.
     
     Returns:
@@ -408,7 +480,7 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
         raise AssertionError('None of the predefined in-degree distributions were chosen.\nTo use a user-defined in-degree vector, use the input n to submit an N-dimensional vector where each element of n must an integer between 1 and N.')
 
     # Process the canalizing depth / canalizing layer structure
-    if layerstructure is None:
+    if layer_structure is None:
         if type(k) in [int, np.int_]:
             assert k >= 0 and k<=N,'The canalizing depth k must be an integer between 0 and N.'
             max_k = k
@@ -417,15 +489,15 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
             assert (len(k) == N and np.all([type(el) in [int, np.int_] for el in k]) and min(k) >= 0 and max_k <= N),'A vector k was submitted.\nTo use a user-defined vector k, ensure that k is an N-dimensional vector where each element is an integer between 0 and N.'
         else:
             raise AssertionError('Wrong input format for k.\nk must be a single integer (or N-dimensional vector of integers) between 0 and N, specifying the minimal canalizing depth or exact canalizing depth (if EXACT_DEPTH==True).')            
-    else:  # layerstructure provided
-        if np.all([type(el) in [int, np.int_] for el in layerstructure]):
-            max_k = sum(layerstructure)
-            assert np.all([type(el) in [int, np.int_] for el in layerstructure]) and np.all([el >= 1 for el in layerstructure]) and max_k <= N, 'The layer structure must be a vector of positive integers with 0 <= k = sum(layerstructure) <= N.'
-        elif np.all([type(el) in [list, np.array] for el in layerstructure]):
-            max_k = max([sum(el) for el in layerstructure])
-            assert len(layerstructure) == N and type(layerstructure[0][0]) in [int, np.int_] and min([min(el) for el in layerstructure]) >= 0 and max_k <= N, 'Ensure that layerstructure is an N-dimensional vector where each element represents a layer structure and is a vector of positive integers with 1 <= k = sum(layerstructure[i]) <= N.'
+    else:  # layer_structure provided
+        if np.all([type(el) in [int, np.int_] for el in layer_structure]):
+            max_k = sum(layer_structure)
+            assert np.all([type(el) in [int, np.int_] for el in layer_structure]) and np.all([el >= 1 for el in layer_structure]) and max_k <= N, 'The layer structure must be a vector of positive integers with 0 <= k = sum(layer_structure) <= N.'
+        elif np.all([type(el) in [list, np.array] for el in layer_structure]):
+            max_k = max([sum(el) for el in layer_structure])
+            assert len(layer_structure) == N and type(layer_structure[0][0]) in [int, np.int_] and min([min(el) for el in layer_structure]) >= 0 and max_k <= N, 'Ensure that layer_structure is an N-dimensional vector where each element represents a layer structure and is a vector of positive integers with 1 <= k = sum(layer_structure[i]) <= N.'
         else:
-            raise AssertionError('Wrong input format for layerstructure.\nlayerstructure must be a single vector (or N-dimensional vector of layer structures) where the sum of each element is between 0 and N.')
+            raise AssertionError('Wrong input format for layer_structure.\nlayer_structure must be a single vector (or N-dimensional vector of layer structures) where the sum of each element is between 0 and N.')
 
     if edges_wiring_diagram is None:
         counter = 0
@@ -455,16 +527,16 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
     for i in range(N):
         if LINEAR:
             F.append(random_linear_function(indegrees[i]))
-        if k > 0 and layerstructure is None:
+        if k > 0 and layer_structure is None:
             if type(k) in [int, np.int_]:
                 F.append(random_k_canalizing(indegrees[i], min(k, indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
                 F.append(random_k_canalizing(indegrees[i], min(k[i], indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
-        elif layerstructure is not None:
-            if np.all([type(el) in [int, np.int_] for el in layerstructure]):
-                F.append(random_k_canalizing_with_specific_layerstructure(indegrees[i], layerstructure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+        elif layer_structure is not None:
+            if np.all([type(el) in [int, np.int_] for el in layer_structure]):
+                F.append(random_k_canalizing_with_specific_layer_structure(indegrees[i], layer_structure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
-                F.append(random_k_canalizing_with_specific_layerstructure(indegrees[i], layerstructure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+                F.append(random_k_canalizing_with_specific_layer_structure(indegrees[i], layer_structure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
         else:
             if EXACT_DEPTH is True:
                 F.append(random_non_canalizing_non_degenerated_function(indegrees[i], bias))
