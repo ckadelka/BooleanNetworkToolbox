@@ -22,8 +22,10 @@ def bin2dec(binary_vector):
     Returns:
         int: Integer value converted from the binary vector.
     """
-    binary_string = ''.join(str(bit) for bit in binary_vector)
-    return int(binary_string, 2)
+    decimal = 0
+    for bit in binary_vector:
+        decimal = (decimal << 1) | bit
+    return int(decimal)
 
 
 def dec2bin(integer_value, num_bits):
