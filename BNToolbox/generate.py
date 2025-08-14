@@ -153,7 +153,7 @@ def random_non_canalizing_non_degenerated_function(n, probability_one=0.5):
             return f
 
 
-def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None):
+def random_k_canalizing_function(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None):
     """
     Generate a random k-canalizing Boolean function in n variables.
 
@@ -206,7 +206,7 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None):
     return BF(f)
 
 
-def random_k_canalizing_with_specific_layer_structure(n, layer_structure, EXACT_DEPTH=False, left_side_of_truth_table=None):
+def random_k_canalizing_function_with_specific_layer_structure(n, layer_structure, EXACT_DEPTH=False, left_side_of_truth_table=None):
     """
     Generate a random Boolean function in n variables with a specified canalizing layer structure.
 
@@ -271,7 +271,7 @@ def random_k_canalizing_with_specific_layer_structure(n, layer_structure, EXACT_
     return BF(f)
 
 
-def random_NCF(n,layer_structure=None,left_side_of_truth_table=None):
+def random_nested_canalizing_function(n,layer_structure=None,left_side_of_truth_table=None):
     '''
     Generate a random nested canalizing Boolean function in n variables 
     with a specified canalizing layer structure (if provided).
@@ -296,11 +296,11 @@ def random_NCF(n,layer_structure=None,left_side_of_truth_table=None):
             of Boolean networks. Physica D: Nonlinear Phenomena, 353, 39-47.
     '''    
     if layer_structure is None:
-        return random_k_canalizing(n,n,EXACT_DEPTH=False,left_side_of_truth_table=left_side_of_truth_table)
+        return random_k_canalizing_function(n,n,EXACT_DEPTH=False,left_side_of_truth_table=left_side_of_truth_table)
     else:
         assert sum(layer_structure) == n,'Error:\nEnsure sum(layer_structure) == n.'
         assert layer_structure[-1] > 1 or n == 1,'Error:\nThe last layer of an NCF has to have size >= 2 whenever n > 1.\nEnsure that layer_structure[-1]>=2.'
-        return random_k_canalizing_with_specific_layer_structure(n,layer_structure,EXACT_DEPTH=False, left_side_of_truth_table=left_side_of_truth_table)
+        return random_k_canalizing_function_with_specific_layer_structure(n,layer_structure,EXACT_DEPTH=False, left_side_of_truth_table=left_side_of_truth_table)
 
 
 def get_layer_structure_of_an_NCF_given_its_Hamming_weight(n, w):
@@ -428,7 +428,7 @@ def random_edge_list(N, indegrees, NO_SELF_REGULATION, AT_LEAST_ONE_REGULATOR_PE
     return edge_list
 
 
-def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='constant',
+def random_network(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='constant',
               left_sides_of_truth_tables=None, layer_structure=None, EXACT_DEPTH=False, NO_SELF_REGULATION=True, LINEAR=False,
               edges_wiring_diagram=None, bias=0.5, n_attempts_to_generate_strongly_connected_network = 1000):
     """
@@ -529,14 +529,14 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
             F.append(random_linear_function(indegrees[i]))
         if k > 0 and layer_structure is None:
             if type(k) in [int, np.int_]:
-                F.append(random_k_canalizing(indegrees[i], min(k, indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+                F.append(random_k_canalizing_function(indegrees[i], min(k, indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
-                F.append(random_k_canalizing(indegrees[i], min(k[i], indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+                F.append(random_k_canalizing_function(indegrees[i], min(k[i], indegrees[i]), EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
         elif layer_structure is not None:
             if np.all([type(el) in [int, np.int_] for el in layer_structure]):
-                F.append(random_k_canalizing_with_specific_layer_structure(indegrees[i], layer_structure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+                F.append(random_k_canalizing_function_with_specific_layer_structure(indegrees[i], layer_structure, EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
             else:
-                F.append(random_k_canalizing_with_specific_layer_structure(indegrees[i], layer_structure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
+                F.append(random_k_canalizing_function_with_specific_layer_structure(indegrees[i], layer_structure[i], EXACT_DEPTH=EXACT_DEPTH, left_side_of_truth_table=left_sides_of_truth_tables[indegrees[i]-1]))
         else:
             if EXACT_DEPTH is True:
                 F.append(random_non_canalizing_non_degenerated_function(indegrees[i], bias))
