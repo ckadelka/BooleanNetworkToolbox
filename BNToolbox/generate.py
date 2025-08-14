@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jul 29 09:25:40 2025
-Last Edited on Wed Aug 13 2025
+Last Edited on Thu Aug 14 2025
 
 @author: Claus Kadelka, Benjamin Coberly
 """
@@ -16,6 +16,7 @@ import random
 
 import utils
 from boolean_function import BooleanFunction as BF
+from boolean_network import BooleanNetwork as BN
 
 def random_function(n, probability_one=0.5):
     """
@@ -167,7 +168,7 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, 
         activator_or_inhibitor (optional): Placeholder for future use; currently not utilized.
 
     Returns:
-        np.array: Boolean function as an array of length 2^n (truth table).
+        BooleanFunction: Boolean function object.
     
     References:
         [1] He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth. 
@@ -222,7 +223,7 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
         left_side_of_truth_table (optional): Precomputed left-hand side of the truth table for speed-up. Default is None.
 
     Returns:
-        np.array: Boolean function as an array of length 2^n (truth table).
+        BooleanFunction: Boolean function object.
     
     References:
         [1] He, Q., & Macauley, M. (2016). Stratification and enumeration of Boolean functions by canalizing depth.
@@ -388,10 +389,7 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
         n_attempts_to_generate_strongly_connected_network (integer, optional): Number of attempts to generate a strongly connected wiring diagram before raising an error and quitting.
     
     Returns:
-        tuple: (F, I, ns) where:
-            - F is a list of N Boolean functions (truth tables), one for each node.
-            - I is the wiring diagram, given as a list of N lists; I[i] contains the indices of regulators for node i.
-            - ns is an array (or list) of length N representing the in-degree (number of regulators) for each node.
+        BooleanNetwork: Boolean network object.
     """
     # Generate the in-degree based on the specified in-degree distribution and the in-degree parameter n. If n is a vector of length N, this is used as in-degree.
     if type(n) in [list, np.array]:
@@ -478,5 +476,5 @@ def random_BN(N, n, k=0, STRONGLY_CONNECTED=False, indegree_distribution='consta
         I[edge[1]].append(edge[0])
     for i in range(N):
         I[i] = np.sort(I[i])
-    return F, I, ns
+    return BN(F, I, ns)
 

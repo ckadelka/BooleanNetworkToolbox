@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Tue Aug 12 11:03:49 2025
@@ -19,8 +20,8 @@ except ModuleNotFoundError:
     __LOADED_CANA__=False
 
 class BooleanFunction:
-    def __init__(self, f = []):
-        assert type(f) in [ list, np.array, np.ndarray ]
+    def __init__(self, f):
+        assert type(f) in [ list, np.array, np.ndarray ], "f must be an array"
         if type(f) == list:
             f = np.array(f)
         self.f = f

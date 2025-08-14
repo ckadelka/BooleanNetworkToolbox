@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jul 29 09:25:40 2025
+Last Edited on Thu Aug 14 2025
 
-@author: Claus Kadelka
+@author: Claus Kadelka, Benjamin Coberly
 """
 
 ##Imports
@@ -17,7 +18,7 @@ from collections import defaultdict
 
 import utils
 import analyze_BF
-
+from boolean_network import BooleanNetwork
 
 ##Key functions: compute/simulate network dynamics
 def update_single_node(f, states_regulators):
@@ -37,49 +38,40 @@ def update_single_node(f, states_regulators):
     return f[utils.bin2dec(states_regulators)]
 
 
-def update_network_synchronously(F, I, X):
+def update_network_synchronously(BN, X):
     """
     Perform a synchronous update of a Boolean network.
 
     Each node's new state is determined by applying its Boolean function to the current states of its regulators.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
+        BN (BooleanNetwork): Boolean Network object.
         X (list or np.array): Current state vector of the network.
 
     Returns:
         np.array: New state vector after the update.
     """
-    if type(X)==list:
-        X = np.array(X)
-    Fx = np.zeros(len(F), dtype=int)
-    for i in range(len(F)):
-        Fx[i] = update_single_node(f = F[i], states_regulators = X[I[i]])
-    return Fx
+    return BN.update_network_synchronously(X)
 
 
-def update_network_synchronously_many_times(F, I, initial_state, n_steps):
+def update_network_synchronously_many_times(BN, X, n_steps):
     """
     Update the state of a Boolean network sychronously multiple time steps.
 
     Starting from the initial state, the network is updated synchronously n_steps times using the update_network_synchronously function.
 
     Parameters:
-        F (list): List of Boolean functions for each node.
-        I (list): List of regulator indices for each node.
-        initial_state (list or np.array): Initial state vector of the network.
+        BN (BooleanNetwork): Boolean Network object.
+        X (list or np.array): Initial state vector of the network.
         n_steps (int): Number of update iterations to perform.
 
     Returns:
         np.array: Final state vector after n_steps updates.
     """
-    for i in range(n_steps):
-        initial_state = update_network_synchronously(F, I, initial_state)
-    return initial_state
+    return BN.update_network_synchronously_many_times(X, n_steps)
 
 
-def update_network_SDDS(F, I, X, P):
+def update_network_SDDS(BN, X, P):
     """
     Perform a stochastic update (SDDS) on a Boolean network.
 
@@ -88,8 +80,7 @@ def update_network_SDDS(F, I, X, P):
     the node is degraded with probability P[i,1]. Otherwise, the state remains unchanged.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
+        BN (BooleanNetwork): Boolean Network object.
         X (list or np.array): Current state vector.
         P (np.array): A len(F)×2 array of probabilities; for each node i, P[i,0] is the activation probability,
                       and P[i,1] is the degradation probability.
@@ -100,20 +91,10 @@ def update_network_SDDS(F, I, X, P):
     References:
         
     """
-    if type(X)==list:
-        X = np.array(X)
-    Fx = X.copy()
-    for i in range(len(F)):
-        nextstep = update_single_node(f = F[i], states_regulators = X[I[i]])
-        if nextstep > X[i] and random.random() < P[i, 0]:  # activation
-            Fx[i] = nextstep
-        elif nextstep < X[i] and random.random() < P[i, 1]:  # degradation
-            Fx[i] = nextstep
-    return Fx
+    return BN.update_network_SDDS(X, P)
 
 
-def get_steady_states_asynchronous(F, I, nsim=500, EXACT=False, left_side_of_truth_table=[], 
-                                   initial_sample_points=[], search_depth=50, SEED=-1, DEBUG=False):
+def get_steady_states_asynchronous(BN, nsim=500, EXACT=False, initial_sample_points=[], search_depth=50, SEED=-1, DEBUG=False):
     """
     Compute the steady states of a Boolean network under asynchronous updates.
 
@@ -124,14 +105,10 @@ def get_steady_states_asynchronous(F, I, nsim=500, EXACT=False, left_side_of_tru
     random initial conditions) or exactly (by iterating over the entire state space when EXACT=True).
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-                 Each function is defined over 2^(# of regulators) entries.
-        I (list): List of lists, where I[i] contains the indices of the regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         nsim (int, optional): Number of initial conditions to simulate (default is 500).
         EXACT (bool, optional): If True, iterate over the entire state space and guarantee finding all steady states (2^N initial conditions);
                                 otherwise, use nsim random initial conditions. (Default is False.)
-        left_side_of_truth_table (list, optional): Precomputed truth table (list of tuples) for N inputs.
-                                                     Used only if EXACT is True.
         initial_sample_points (list, optional): List of initial states (as binary vectors) to use.
                                                   If provided and EXACT is False, these override random sampling.
         search_depth (int, optional): Maximum number of asynchronous update iterations to attempt per simulation.
@@ -148,95 +125,10 @@ def get_steady_states_asynchronous(F, I, nsim=500, EXACT=False, left_side_of_tru
             - SEED (int): The random seed used for the simulation.
             - initial_sample_points (list): The list of initial sample points used (if provided) or those generated during simulation.
     """
-    N=len(F)
-    if EXACT and left_side_of_truth_table == []:
-        left_side_of_truth_table = list(map(np.array, list(itertools.product([0, 1], repeat=N))))
-
-    sampled_points = []
-    
-    assert initial_sample_points == [] or not EXACT, (
-        "Warning: sample points were provided but, with option EXACT==True, the entire state space is computed "
-        "(and initial sample points ignored)"
-    )
-    
-    if SEED == -1:
-        SEED = int(random.random() * 2**31)
-    
-    np.random.seed(SEED)
-    
-    dictF = dict()
-    steady_states = []
-    basin_sizes = []
-    steady_state_dict = dict()   
-    
-    for iteration in range(nsim if not EXACT else 2**N):
-        if EXACT:
-            x = left_side_of_truth_table[iteration]
-            xdec = iteration
-        else:
-            if initial_sample_points == []:  # generate random initial states on the fly
-                x = np.random.randint(2, size=N)
-                xdec = utils.bin2dec(x)
-                sampled_points.append(xdec)
-            else:                
-                x = initial_sample_points[iteration]
-                xdec = utils.bin2dec(x)
-        
-        if DEBUG:
-            print(iteration, -1, -1, False, xdec, x)
-        for jj in range(search_depth):  # update until a steady state is reached or search_depth is exceeded
-            FOUND_NEW_STATE = False
-            try:
-                # Check if this state is already recognized as a steady state.
-                index_ss = steady_state_dict[xdec]
-            except KeyError:
-                # Asynchronously update the state until a new state is found.
-                update_order_to_try = np.random.permutation(N)
-                for i in update_order_to_try:
-                    try:
-                        fxdec = dictF[(xdec, i)]
-                        if fxdec != xdec:
-                            FOUND_NEW_STATE = True
-                            x[i] = 1 - x[i]
-                    except KeyError:
-                        fx_i = update_single_node(F[i], x[I[i]])
-                        if fx_i > x[i]:
-                            fxdec = xdec + 2**(N - 1 - i)
-                            x[i] = 1
-                            FOUND_NEW_STATE = True
-                        elif fx_i < x[i]:
-                            fxdec = xdec - 2**(N - 1 - i)
-                            x[i] = 0
-                            FOUND_NEW_STATE = True
-                        else:
-                            fxdec = xdec
-                        dictF.update({(xdec, i): fxdec})
-                    if FOUND_NEW_STATE:
-                        xdec = fxdec
-                        break
-                if DEBUG:
-                    print(iteration, jj, i, FOUND_NEW_STATE, xdec, x)
-            if FOUND_NEW_STATE == False:  # steady state reached
-                try:
-                    index_ss = steady_state_dict[xdec]
-                    basin_sizes[index_ss] += 1
-                    break
-                except KeyError:
-                    steady_state_dict.update({xdec: len(steady_states)})
-                    steady_states.append(xdec)
-                    basin_sizes.append(1)
-                    break
-        if DEBUG:
-            print()
-    if sum(basin_sizes) < (nsim if not EXACT else 2**N):
-        print('Warning: only %i of the %i tested initial conditions eventually reached a steady state. Try increasing the search depth. '
-              'It may however also be the case that your asynchronous state space contains a limit cycle.' %
-              (sum(basin_sizes), nsim if not EXACT else 2**N))
-    return (steady_states, len(steady_states), basin_sizes, steady_state_dict, dictF, SEED,
-            initial_sample_points if initial_sample_points != [] else sampled_points)
+    return BN.get_stead_states_asynchronous(nsim, EXACT, initial_sample_points, search_depth, SEED, DEBUG)
 
 
-def get_steady_states_asynchronous_given_one_initial_condition(F, I, nsim=500, stochastic_weights=[], initial_condition=0, search_depth=50, SEED=-1, DEBUG=False):
+def get_steady_states_asynchronous_given_one_initial_condition(BN, nsim=500, stochastic_weights=[], initial_condition=0, search_depth=50, SEED=-1, DEBUG=False):
     """
     Determine the steady states reachable from one initial condition using weighted asynchronous updates.
 
@@ -245,8 +137,7 @@ def get_steady_states_asynchronous_given_one_initial_condition(F, I, nsim=500, s
     and if given, it is normalized and used to bias the random permutation of node update order.
     
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
+        BN (BooleanNetwork): Boolean Network object.
         nsim (int, optional): Number of simulation runs (default is 500).
         stochastic_weights (list, optional): List of stochastic weights (one per node) used to bias update order.
                                                If empty, uniform random order is used.
@@ -267,92 +158,10 @@ def get_steady_states_asynchronous_given_one_initial_condition(F, I, nsim=500, s
             - SEED (int): The random seed used.
             - queues (list): List of state update queues (the sequence of states encountered) for each simulation.
     """
-    if SEED == -1:
-        SEED = int(random.random() * 2**31)
-    np.random.seed(SEED)    
-    
-    N = len(F)
-    
-    if type(initial_condition) == int:
-        initial_condition = np.array(utils.dec2bin(initial_condition, N))
-        initial_condition_bin = utils.bin2dec(initial_condition)
-    else:
-        initial_condition = np.array(initial_condition, dtype=int)
-        initial_condition_bin = utils.bin2dec(initial_condition)
-    
-    assert stochastic_weights == [] or len(stochastic_weights) == N, "one stochastic weight per node is required"    
-    if stochastic_weights != []:
-        stochastic_weights = np.array(stochastic_weights) / sum(stochastic_weights)
-    
-    dictF = dict()
-    steady_states = []
-    basin_sizes = []
-    transient_times = []
-    steady_state_dict = dict()   
-    queues = []
-    for iteration in range(nsim):
-        x = initial_condition.copy()
-        xdec = initial_condition_bin
-        queue = [xdec]
-        for jj in range(search_depth):  # update until a steady state is reached or search_depth is exceeded
-            FOUND_NEW_STATE = False
-            try:
-                index_ss = steady_state_dict[xdec]
-            except KeyError:
-                if stochastic_weights != []:
-                    update_order_to_try = np.random.choice(N, size=N, replace=False, p=stochastic_weights)
-                else:
-                    update_order_to_try = np.random.permutation(N)
-                for i in update_order_to_try:
-                    try:
-                        fxdec = dictF[(xdec, i)]
-                        if fxdec != xdec:
-                            FOUND_NEW_STATE = True
-                            x[i] = 1 - x[i]
-                    except KeyError:
-                        fx_i = update_single_node(F[i], x[I[i]])
-                        if fx_i > x[i]:
-                            fxdec = xdec + 2**(N - 1 - i)
-                            x[i] = 1
-                            FOUND_NEW_STATE = True
-                        elif fx_i < x[i]:
-                            fxdec = xdec - 2**(N - 1 - i)
-                            x[i] = 0
-                            FOUND_NEW_STATE = True
-                        else:
-                            fxdec = xdec
-                        dictF.update({(xdec, i): fxdec})
-                    if FOUND_NEW_STATE:
-                        xdec = fxdec
-                        queue.append(xdec)
-                        break
-                if DEBUG:
-                    print(iteration, jj, i, FOUND_NEW_STATE, xdec, x)
-            if not FOUND_NEW_STATE:  # steady state reached
-                queues.append(queue[:])
-                try:
-                    index_ss = steady_state_dict[xdec]
-                    basin_sizes[index_ss] += 1
-                    transient_times[index_ss].append(jj)
-                    break
-                except KeyError:
-                    steady_state_dict.update({xdec: len(steady_states)})
-                    steady_states.append(xdec)
-                    basin_sizes.append(1)
-                    transient_times.append([jj])
-                    break
-        if FOUND_NEW_STATE:
-            print(jj)
-            break
-        if DEBUG:
-            print()
-    if sum(basin_sizes) < nsim:
-        print('Warning: only %i of the %i tested initial conditions eventually reached a steady state. '
-              'Try increasing the search depth. It may also be that your asynchronous state space contains a limit cycle.' % (sum(basin_sizes), nsim))
-    return (steady_states, len(steady_states), basin_sizes, transient_times, steady_state_dict, dictF, SEED, queues)
+    return BN.get_steady_states_aysnchronous_given_one_initial_condition(nsim, stochastic_weights, initial_condition, search_depth, SEED, DEBUG)
 
 
-def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps_timeout=100000,
+def get_attractors_synchronous(BN, nsim=500, initial_sample_points=[], n_steps_timeout=100000,
                                INITIAL_SAMPLE_POINTS_AS_BINARY_VECTORS=True):
     """
     Compute the number of attractors in a Boolean network using an alternative (v2) approach.
@@ -363,8 +172,7 @@ def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps
     the set of initial sample points used, the explored state space, and the number of simulations that timed out.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of lists, where I[i] contains the indices of the regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         nsim (int, optional): Number of initial conditions to simulate (default is 500).
         initial_sample_points (list, optional): List of initial states (in decimal) to use.
         n_steps_timeout (int, optional): Maximum number of update steps allowed per simulation (default 100000).
@@ -381,70 +189,10 @@ def get_attractors_synchronous(F, I, nsim=500, initial_sample_points=[], n_steps
             - state_space (list): List of states (in decimal) encountered after one update from initial_sample_points.
             - n_timeout (int): Number of simulations that timed out before reaching an attractor.
     """
-    dictF = dict()
-    attractors = []
-    basin_sizes = []
-    attr_dict = dict()
-    state_space = []
-    
-    sampled_points = []
-    n_timeout = 0
-    
-    N = len(F)
-    
-    INITIAL_SAMPLE_POINTS_EMPTY = utils.check_if_empty(initial_sample_points)
-    if not INITIAL_SAMPLE_POINTS_EMPTY:
-        nsim = len(initial_sample_points)
-    
-    for i in range(nsim):
-        if INITIAL_SAMPLE_POINTS_EMPTY:
-            x = np.random.randint(2, size=N)
-            xdec = utils.bin2dec(x)
-            sampled_points.append(xdec)
-        else:
-            if INITIAL_SAMPLE_POINTS_AS_BINARY_VECTORS:
-                x = initial_sample_points[i]
-                xdec = utils.bin2dec(x)
-            else:
-                xdec = initial_sample_points[i]
-                x = np.array(utils.dec2bin(xdec, N))
-        queue = [xdec]
-        count = 0
-        while count < n_steps_timeout:
-            try:
-                fxdec = dictF[xdec]
-            except KeyError:
-                fx = update_network_synchronously(F, I, x)
-                fxdec = utils.bin2dec(fx)
-                dictF.update({xdec: fxdec})
-                x = fx
-            if count == 0:
-                state_space.append(fxdec)
-            try:
-                index_attr = attr_dict[fxdec]
-                basin_sizes[index_attr] += 1
-                attr_dict.update(list(zip(queue, [index_attr] * len(queue))))
-                break
-            except KeyError:
-                try:
-                    index = queue.index(fxdec)
-                    attr_dict.update(list(zip(queue[index:], [len(attractors)] * (len(queue) - index))))
-                    attractors.append(queue[index:])
-                    basin_sizes.append(1)
-                    break
-                except ValueError:
-                    pass
-            queue.append(fxdec)
-            xdec = fxdec
-            count += 1
-            if count == n_steps_timeout:
-                n_timeout += 1            
-    return (attractors, len(attractors), basin_sizes, attr_dict,
-            sampled_points if INITIAL_SAMPLE_POINTS_EMPTY else initial_sample_points,
-            state_space, n_timeout)
+    return BN.get_attractors_synchronous(nsim, initial_sample_points, n_steps_timeout, INITIAL_SAMPLE_POINTS_AS_BINARY_VECTORS)
 
 
-def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_DICTF=False):
+def get_attractors_synchronous_exact(BN, RETURN_DICTF=False):
     """
     Compute the exact number of attractors in a Boolean network using a fast, vectorized approach.
 
@@ -453,10 +201,7 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
     Attractors and their basin sizes are then determined by iterating over the entire state space.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of lists, where I[i] contains the indices of the regulators for node i.
-        left_side_of_truth_table (np.array, optional): Precomputed array of all 2^N states (each row is a state).
-                                                        If None, it is generated.
+        BN (BooleanNetwork): Boolean Network object.
         RETURN_DICTF (bool, optional): If True, the state space is returned as a dictionary, 
                                         in which each state is associated by its decimal representation.
 
@@ -469,54 +214,11 @@ def get_attractors_synchronous_exact(F, I, left_side_of_truth_table=None,RETURN_
             - state_space (np.array): The constructed state space matrix (of shape (2^N, N)).
             - dictF (dict, only returned if RETURN_DICTF==True): State space as dictionary.
     """
-    
-    N = len(F)
-    
-    if left_side_of_truth_table is None:
-        left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
-    
-    powers_of_two = np.array([2**i for i in range(N)])[::-1]
-    degrees = list(map(len, I))
-    
-    state_space = np.zeros((2**N, N), dtype=int)
-    for i in range(N):
-        for j, x in enumerate(itertools.product([0, 1], repeat=degrees[i])):
-            if F[i][j]:
-                # For rows in left_side_of_truth_table where the columns I[i] equal x, set state_space accordingly.
-                state_space[np.all(left_side_of_truth_table[:, I[i]] == np.array(x), axis=1), i] = 1
-    dictF = dict(zip(list(range(2**N)), np.dot(state_space, powers_of_two)))
-    
-    attractors = []
-    basin_sizes = []
-    attractor_dict = dict()
-    for xdec in range(2**N):
-        queue = [xdec]
-        while True:
-            fxdec = dictF[xdec]
-            try:
-                index_attr = attractor_dict[fxdec]
-                basin_sizes[index_attr] += 1
-                attractor_dict.update(list(zip(queue, [index_attr] * len(queue))))
-                break
-            except KeyError:
-                try:
-                    index = queue.index(fxdec)
-                    attractor_dict.update(list(zip(queue, [len(attractors)] * len(queue))))
-                    attractors.append(queue[index:])
-                    basin_sizes.append(1)
-                    break
-                except ValueError:
-                    pass
-            queue.append(fxdec)
-            xdec = fxdec
-    if RETURN_DICTF:
-        return (attractors, len(attractors), basin_sizes, attractor_dict, state_space, dictF)        
-    else:
-        return (attractors, len(attractors), basin_sizes, attractor_dict, state_space)
+    return BN.get_attractors_synchronous_exact(RETURN_DICTF)
 
 
 ## Transform Boolean networks
-def get_essential_network(F, I):
+def get_essential_network(BN):
     """
     Determine the essential components of a Boolean network.
 
@@ -526,10 +228,7 @@ def get_essential_network(F, I):
     and a corresponding list of essential regulators.
 
     Parameters:
-        F (list): A list of N Boolean functions (truth tables). For node i, the Boolean function is given as a list
-                  of length 2^(n_i), where n_i is the number of regulators for that node.
-        I (list): A list of N lists. For node i, I[i] is a list of regulator indices (typically 0, 1, ..., n_i-1)
-                  corresponding to the wiring diagram of the Boolean network.
+        BN (BooleanNetwork): Boolean Network object.
 
     Returns:
         tuple: (F_essential, I_essential) where:
@@ -537,35 +236,10 @@ def get_essential_network(F, I):
               representing the functions restricted to the essential regulators.
             - I_essential is a list of N lists containing the indices of the essential regulators for each node.
     """
-    F_essential = []
-    I_essential = []
-    for f, regulators in zip(F, I):
-        if len(f) == 0:  # happens if the actual degree of f was too large for it to be loaded
-            F_essential.append(f)
-            I_essential.append(regulators) #keep all regulators (unable to determine if all are essential)
-            continue
-        elif sum(f) == 0: #constant zero function
-            F_essential.append(np.array([0]))
-            I_essential.append(np.array([], dtype=int))
-            continue
-        elif sum(f) == len(f): #constant one function
-            F_essential.append(np.array([1]))
-            I_essential.append(np.array([], dtype=int))
-            continue
-        essential_variables = np.array(analyze_BF.get_essential_variables(f))
-        n = len(regulators)
-        non_essential_variables = np.array(list(set(list(range(n))) - set(essential_variables)))
-        if len(non_essential_variables) == 0:
-            F_essential.append(f)
-            I_essential.append(regulators)
-        else:
-            left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
-            F_essential.append(np.array(f)[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0])
-            I_essential.append(np.array(regulators)[essential_variables])
-    return F_essential, I_essential
+    return BN.get_essential_network()
 
 
-def get_edge_controlled_network(F, I, control_target, control_source, type_of_edge_control=0, left_side_of_truth_table=[]):
+def get_edge_controlled_network(BN, control_target, control_source, type_of_edge_control=0, left_side_of_truth_table=[]):
     """
     Generate a perturbed Boolean network by removing the influence of a specified regulator on a specified target.
 
@@ -574,8 +248,7 @@ def get_edge_controlled_network(F, I, control_target, control_source, type_of_ed
     the wiring diagram for that node.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): Wiring diagram for the network; each entry I[i] is a list of regulator indices for node i.
+        BN (BooleanNetwork): Boolean Network object.
         control_target (int): Index of the target node to be perturbed.
         control_source (int): Index of the regulator whose influence is to be removed.
         type_of_edge_control (int, optional): Source value in regulation after control. Default is 0.
@@ -583,28 +256,12 @@ def get_edge_controlled_network(F, I, control_target, control_source, type_of_ed
                                               If not provided, it is computed.
 
     Returns:
-        tuple: (F_new, I_new, ns) where:
-            - F_new is the updated list of Boolean functions after perturbation.
-            - I_new is the updated wiring diagram after removing the control regulator from the target node.
-            - degrees_new is the updated list of in-degrees for each node.
+        BooleanNetwork object where:
+            - F is the updated list of Boolean functions after perturbation.
+            - I is the updated wiring diagram after removing the control regulator from the target node.
+            - ns is the updated list of in-degrees for each node.
     """
-    assert type_of_edge_control in [0,1], "type_of_edge_control must be 0 or 1."
-    assert control_source in I[control_target], "control_source=%i does not regulate control_target=%i." % (control_source,control_target)
-    
-    F_new = [f for f in F]
-    I_new = [i for i in I]
-
-    if left_side_of_truth_table == []:
-        left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=len(I[control_target]))))
-
-    index = list(I[control_target]).index(control_source)
-    F_new[control_target] = F_new[control_target][left_side_of_truth_table[:, index] == type_of_edge_control]
-    dummy = list(I_new[control_target])
-    dummy.remove(control_source)
-    I_new[control_target] = np.array(dummy)
-
-    degrees_new = list(map(len, I_new))
-    return F_new, I_new, degrees_new
+    return BN.get_edge_controlled_network(control_target, control_source, type_of_edge_control, left_side_of_truth_table)
 
 
 def get_BN_with_fixed_source_nodes(F,I,n_variables,n_source_nodes,values_source_nodes):
@@ -612,7 +269,7 @@ def get_BN_with_fixed_source_nodes(F,I,n_variables,n_source_nodes,values_source_
     #NOTE: F, I must be arranged so that the source nodes appear last
     
     assert len(F) == len(I)
-    F_new = [np.array(el) for el in F[:n_variables]]
+    F_new = [np.array(el.f) for el in F[:n_variables]]
     I_new = [np.array(el) for el in I[:n_variables]]
     
     for source_node,value in zip(list(range(n_variables,n_variables+n_source_nodes)),values_source_nodes):
@@ -628,25 +285,23 @@ def get_BN_with_fixed_source_nodes(F,I,n_variables,n_source_nodes,values_source_
     return F_new,I_new
 
 
-def get_external_inputs(I, degree, N):
+def get_external_inputs(BN):
     """
     Identify external inputs in a Boolean network.
 
     A node is considered an external input if it has exactly one regulator and that regulator is the node itself.
 
     Parameters:
-        I (list): A list where I[i] is a list of regulator indices for node i.
-        degree (list or array): A list where degree[i] is the number of regulators for node i.
-        N (int): Total number of nodes in the network.
+        BN (BooleanNetwork): Boolean Network object.
 
     Returns:
         np.array: Array of node indices that are external inputs.
     """
-    return np.array([i for i in range(N) if degree[i] == 1 and I[i][0] == i])
+    return BN.get_external_inputs()
 
 
 ## Robustness measures: synchronous Derrida value, entropy of basin size distribution, coherence, fragility
-def get_derrida_value(F, I, nsim=1000, EXACT = False):
+def get_derrida_value(BN, nsim=1000, EXACT = False):
     """
     Estimate the Derrida value for a Boolean network.
 
@@ -654,27 +309,13 @@ def get_derrida_value(F, I, nsim=1000, EXACT = False):
     the average Hamming distance between the resulting updated states of the original and perturbed networks.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
+        BN (BooleanNetwork): Boolean Network object.
         nsim (int, optional): Number of simulations to perform. Default is 1000.
 
     Returns:
         float: The average Hamming distance (Derrida value) over nsim simulations.
     """
-    N = len(F)
-    if EXACT:
-        return np.mean([analyze_BF.get_average_sensitivity(f,EXACT=True,NORMALIZED=False) for f in F])
-    else:
-        hamming_distances = []
-        for i in range(nsim):
-            X = np.random.randint(0, 2, N)
-            Y = X.copy()
-            index = np.random.randint(N)
-            Y[index] = 1 - Y[index]
-            FX = update_network_synchronously(F, I, X)
-            FY = update_network_synchronously(F, I, Y)
-            hamming_distances.append(sum(FX != FY))
-        return np.mean(hamming_distances)
+    return BN.get_derrida_value(nsim, EXACT)
 
 
 def get_relative_size_of_largest_basin(basin_sizes):
@@ -755,17 +396,14 @@ def get_coherence_from_attractor_dict_exact(attractor_dict, left_side_of_truth_t
                 count_of_neighbors_who_transition_to_same_attractor += 1
     return count_of_neighbors_who_transition_to_same_attractor / (2**(N-1) * N)
 
-def get_attractors_and_robustness_measures_synchronous_exact(F, I, left_side_of_truth_table=None):
+def get_attractors_and_robustness_measures_synchronous_exact(BN):
     """
     Compute the attractors and several robustness measures of a Boolean network.
 
     This function computes the exact attractors and robustness (coherence and fragility) of each basin of attraction and of each attractor.
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of lists, where I[i] contains the indices of the regulators for node i.
-        left_side_of_truth_table (np.array, optional): Precomputed array of all 2^N states (each row is a state).
-                                                        If None, it is generated.
+        BN (BooleanNetwork): Boolean Network object.
 
     Returns:
         tuple: A tuple containing:
@@ -781,98 +419,10 @@ def get_attractors_and_robustness_measures_synchronous_exact(F, I, left_side_of_
             - coherence (float): overall network coherence
             - fragility (float): overall network fragility
     """
-    N = len(F)
-    
-    if left_side_of_truth_table is None:
-        left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=N)))))
-    
-    attractors, n_attractors, basin_sizes, attractor_dict, state_space = get_attractors_synchronous_exact(F, I, left_side_of_truth_table=left_side_of_truth_table)
-    
-    len_attractors = list(map(len,attractors))
-    
-    
-    if n_attractors == 1:
-        return (attractors, n_attractors, np.array(basin_sizes)/2**N, attractor_dict, state_space, np.ones(1), np.zeros(1), np.ones(1), np.zeros(1), 1, 0)
-    
-    mean_states_attractors = []
-    is_attr_dict = dict()
-    for i in range(n_attractors):
-        if len_attractors[i] == 1:
-            mean_states_attractors.append(np.array(utils.dec2bin(attractors[i][0], N)))
-        else:
-            states_attractors = np.array([utils.dec2bin(state, N) for state in attractors[i]])
-            mean_states_attractors.append(states_attractors.mean(0))
-        for state in attractors[i]:
-            is_attr_dict.update({state:i})
-        
-    distance_between_attractors = np.zeros((n_attractors,n_attractors),dtype=int)
-    for i in range(n_attractors):
-        for j in range(i+1,n_attractors):
-            distance_between_attractors[i,j] = np.sum(np.abs(mean_states_attractors[i] - mean_states_attractors[j]))
-            distance_between_attractors[j,i] = distance_between_attractors[i,j]
-    distance_between_attractors = distance_between_attractors/N
-    
-    basin_coherences = np.zeros(n_attractors)
-    basin_fragilities = np.zeros(n_attractors)
-    attractor_coherences = np.zeros(n_attractors)
-    attractor_fragilities = np.zeros(n_attractors)
-    
-    powers_of_2 = np.array([2**i for i in range(N)])[::-1]
-    for xdec, x in enumerate(left_side_of_truth_table): #iterate over each edge of the n-dim Hypercube once
-        for i in range(N):
-            if x[i] == 0:
-                ydec = xdec + powers_of_2[i]
-            else: #to ensure we are not double-counting each edge
-                continue
-            index_attr_x = attractor_dict[xdec]
-            index_attr_y = attractor_dict[ydec]
-            if index_attr_x == index_attr_y:
-                basin_coherences[index_attr_x] += 1
-                basin_coherences[index_attr_y] += 1
-                try:
-                    is_attr_dict[xdec]
-                    attractor_coherences[index_attr_x] += 1
-                except KeyError:
-                    pass
-                try:
-                    is_attr_dict[ydec]
-                    attractor_coherences[index_attr_y] += 1
-                except KeyError:
-                    pass
-            else:
-                normalized_Hamming_distance = distance_between_attractors[index_attr_x,index_attr_y]
-                basin_fragilities[index_attr_x] += normalized_Hamming_distance
-                basin_fragilities[index_attr_y] += normalized_Hamming_distance
-                try:
-                    is_attr_dict[xdec]
-                    attractor_fragilities[index_attr_x] += normalized_Hamming_distance
-                except KeyError:
-                    pass
-                try:
-                    is_attr_dict[ydec]
-                    attractor_fragilities[index_attr_y] += normalized_Hamming_distance
-                except KeyError:
-                    pass
-                
-    #normalizations
-    for i,(basin_size,length_attractor) in enumerate(zip(basin_sizes,len_attractors)):
-        basin_coherences[i] = basin_coherences[i] / basin_size / N
-        basin_fragilities[i] = basin_fragilities[i] / basin_size / N
-        attractor_coherences[i] = attractor_coherences[i] / length_attractor / N
-        attractor_fragilities[i] = attractor_fragilities[i] / length_attractor / N
-    basin_sizes = np.array(basin_sizes)/2**N
-    
-    coherence = np.dot(basin_sizes,basin_coherences)
-    fragility = np.dot(basin_sizes,basin_fragilities)
-    
-    return (attractors, n_attractors, basin_sizes, 
-            attractor_dict, state_space,
-            coherence,fragility,
-            basin_coherences, basin_fragilities,
-            attractor_coherences, attractor_fragilities)
+    return BN.get_attractors_and_robustness_measures_synchronous_exact()
 
 
-def get_attractors_and_robustness_measures_synchronous(F, I, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
+def get_attractors_and_robustness_measures_synchronous(BN, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
     """
     Approximate global robustness measures and attractors.
 
@@ -887,8 +437,7 @@ def get_attractors_and_robustness_measures_synchronous(F, I, number_different_IC
     In addition, it collects several details about each attractor (such as basin sizes, coherence of each basin, etc.).
 
     Parameters:
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of lists, where I[i] contains the indices of the regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         number_different_IC (int, optional): Number of different initial conditions to sample (default is 500).
         RETURN_ATTRACTOR_COHERENCE (bool, optional): Determines whether the attractor coherence should also be computed (default is No, i.e., False).
 
@@ -905,256 +454,7 @@ def get_attractors_and_robustness_measures_synchronous(F, I, number_different_IC
             - attractor_coherence (list): The exact coherence of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
             - attractor_fragility (list): The exact fragility of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
     """
-    def lcm(a, b):
-        return abs(a*b) // math.gcd(a, b)
-    
-    N = len(F)
-    
-    dictF = dict()
-    attractors = []
-    ICs_per_attractor_state = []
-    basin_sizes = []
-    attractor_dict = dict()
-    attractor_state_dict = []
-    distance_from_attractor_state_dict = []
-    counter_phase_shifts = []
-    
-    height = []
-    degrees = list(map(len, I))
-    
-    powers_of_2s = [np.array([2**i for i in range(NN)])[::-1] for NN in range(max(degrees)+1)]
-    if N<64:
-        powers_of_2 = np.array([2**i for i in range(N)])[::-1]
-    
-    robustness_approximation = 0
-    fragility_sum = 0
-    basin_robustness = defaultdict(float)
-    basin_fragility = defaultdict(float)
-    final_hamming_distance_approximation = 0
-    mean_states_attractors = []
-    states_attractors = []
-    
-    for i in range(number_different_IC):
-        index_attractors = []
-        index_of_state_within_attractor_reached = []
-        distance_from_attractor = []
-        for j in range(2):
-            if j == 0:
-                x = np.random.randint(2, size=N)
-                if N<64:
-                    xdec = np.dot(x, powers_of_2)
-                else: #out of range of np.int64
-                    xdec = ''.join(str(bit) for bit in x)
-                x_old = x.copy()
-            else:
-                x = x_old
-                random_flipped_bit = np.random.choice(N)
-                x[random_flipped_bit] = 1 - x[random_flipped_bit]
-                if N<64:
-                    xdec = np.dot(x, powers_of_2)
-                else: #out of range of np.int64
-                    xdec = ''.join(str(bit) for bit in x)               
-            queue = [xdec]
-            try:
-                index_attr = attractor_dict[xdec]
-            except KeyError:
-                while True:
-                    try: #check if we already know F(xdec)
-                        fxdec = dictF[xdec]
-                    except KeyError: #if not, then compute the F(xdec)
-                        fx = []
-                        for jj in range(N):
-                            if degrees[jj]>0:
-                                fx.append(F[jj][np.dot(x[I[jj]], powers_of_2s[degrees[jj]])])
-                            else:#constant functions whose regulators were all fixed to a specific value
-                                fx.append(F[jj][0])
-                        if N<64:
-                            fxdec = np.dot(fx, powers_of_2)
-                        else:
-                            fxdec = ''.join(str(bit) for bit in fx)               
-                        dictF.update({xdec: fxdec})
-                    try: #check if we already know the attractor of F(xdec) 
-                        index_attr = attractor_dict[fxdec]
-                        dummy_index_within_attractor_reached = attractor_state_dict[index_attr][fxdec]
-                        dummy_distance_from_attractor = distance_from_attractor_state_dict[index_attr][fxdec]
-                        attractor_dict.update(list(zip(queue, [index_attr]*len(queue))))
-                        attractor_state_dict[index_attr].update(list(zip(queue, [dummy_index_within_attractor_reached]*len(queue))))
-                        distance_from_attractor_state_dict[index_attr].update(
-                            list(zip(queue, list(range(len(queue) + dummy_distance_from_attractor, dummy_distance_from_attractor, -1))))
-                        )
-                        break
-                    except KeyError: 
-                        try: #if not, then check if F(xdec) is already in the queue, i.e., if F(xdec) is part of an attractor itself
-                            index = queue.index(fxdec)
-                            index_attr = len(attractors)
-                            attractor_dict.update(list(zip(queue, [index_attr]*len(queue))))
-                            attractors.append(queue[index:])
-                            basin_sizes.append(1)
-                            attractor_state_dict.append(dict(zip(queue, [0]*index + list(range(len(attractors[-1])))))
-                            )
-                            distance_from_attractor_state_dict.append(
-                                dict(zip(queue, list(range(index, 0, -1)) + [0]*len(attractors[-1])))
-                            )
-                            ICs_per_attractor_state.append([0] * len(attractors[-1]))
-                            counter_phase_shifts.append([0] * len(attractors[-1]))
-
-                            if len(attractors[-1]) == 1:
-                                if N<64:
-                                    fixed_point = np.array(utils.dec2bin(queue[index], N))
-                                else:
-                                    fixed_point = np.array(list(queue[index]), dtype=int)
-                                states_attractors.append(fixed_point.reshape((1, N)))
-                                mean_states_attractors.append(fixed_point)
-                            else:
-                                if N<64:
-                                    limit_cycle = np.array([utils.dec2bin(state, N) for state in queue[index:]])
-                                else:
-                                    limit_cycle = np.array([np.array(list(state), dtype=int) for state in queue[index:]])          
-                                states_attractors.append(limit_cycle)
-                                mean_states_attractors.append(limit_cycle.mean(0))
-                            break
-                        except ValueError: #if not, proceed by setting x = F(x)
-                            x = np.array(fx)
-                    queue.append(fxdec)
-                    xdec = fxdec
-
-            index_attractors.append(index_attr)
-            index_of_state_within_attractor_reached.append(attractor_state_dict[index_attr][xdec])
-            distance_from_attractor.append(distance_from_attractor_state_dict[index_attr][xdec])
-            basin_sizes[index_attr] += 1
-            ICs_per_attractor_state[index_attr][attractor_state_dict[index_attr][xdec]] += 1
-        if index_attractors[0] == index_attractors[1]:
-            robustness_approximation += 1
-            basin_robustness[index_attractors[0]] += 1
-            length_phaseshift = max(index_of_state_within_attractor_reached) - min(index_of_state_within_attractor_reached)
-            counter_phase_shifts[index_attr][length_phaseshift] += 1
-        else:
-            fragility_sum += np.sum(np.abs(mean_states_attractors[index_attractors[0]] - mean_states_attractors[index_attractors[1]]))
-            basin_fragility[index_attractors[0]] += np.sum(np.abs(mean_states_attractors[index_attractors[0]] - mean_states_attractors[index_attractors[1]]))
-            required_n_states = lcm(len(attractors[index_attractors[0]]), len(attractors[index_attractors[1]]))
-            index_j0 = index_of_state_within_attractor_reached[0]
-            periodic_states_j0 = np.tile(states_attractors[index_attractors[0]], 
-                                         (required_n_states // len(attractors[index_attractors[0]]) + 1, 1))[index_j0:(index_j0 + required_n_states), :]
-            index_j1 = index_of_state_within_attractor_reached[1]
-            periodic_states_j1 = np.tile(states_attractors[index_attractors[1]], 
-                                         (required_n_states // len(attractors[index_attractors[1]]) + 1, 1))[index_j1:(index_j1 + required_n_states), :]
-            final_hamming_distance_approximation += np.mean(periodic_states_j1 == periodic_states_j0)
-            
-        height.extend(distance_from_attractor)
-    
-    lower_bound_number_of_attractors = len(attractors)
-    approximate_basin_sizes = np.array(basin_sizes)
-    approximate_coherence = robustness_approximation * 1.0 / number_different_IC
-    approximate_fragility = fragility_sum * 1.0 / number_different_IC / N
-    
-    approximate_basin_coherence = np.array([basin_robustness[index_att] * 2.0 / basin_sizes[index_att] for index_att in range(len(attractors))])
-    approximate_basin_fragility = np.array([basin_fragility[index_att] * 2.0 / basin_sizes[index_att] / N for index_att in range(len(attractors))])
-    
-    for index_attr in range(len(attractors)):
-        periodic_states_two_periods = np.tile(states_attractors[index_attr], (2, 1))
-        for length_phaseshift, num_IC_with_that_phaseshift in enumerate(counter_phase_shifts[index_attr]):
-            if num_IC_with_that_phaseshift > 0 and length_phaseshift > 0:
-                final_hamming_distance_approximation += num_IC_with_that_phaseshift * np.mean(
-                    states_attractors[index_attr] ==
-                    periodic_states_two_periods[length_phaseshift:(length_phaseshift + len(attractors[index_attr])), :]
-                )
-                
-    final_hamming_distance_approximation = final_hamming_distance_approximation / number_different_IC
-    
-    #fixing the results here because the subsequent attractor coherence computation could in theory identify additional attractors, 
-    #which would screw things up because the attractor regions of the state space have then been oversampled
-    results = [attractors, lower_bound_number_of_attractors, approximate_basin_sizes/2./number_different_IC, 
-               approximate_coherence, approximate_fragility, final_hamming_distance_approximation,
-               approximate_basin_coherence, approximate_basin_fragility]
-    if RETURN_ATTRACTOR_COHERENCE == False:
-        return tuple(results)
-    else:
-        attractor_coherence = np.zeros(lower_bound_number_of_attractors)
-        attractor_fragility = np.zeros(lower_bound_number_of_attractors)
-        attractors_original = attractors[:] #needed because new attractors may be found
-        for index_attr_original,attractor in enumerate(attractors_original):
-            for attractor_state in attractor: #perturb each attractor state
-                for i in range(N):
-                    if N<64:
-                        x = np.array(utils.dec2bin(attractor_state,N))
-                    else:
-                        x = np.array(list(attractor_state), dtype=int)
-                    x[i] = 1 - x[i]
-                    if N<64:
-                        xdec = np.dot(x, powers_of_2)
-                    else:
-                        xdec = ''.join(str(bit) for bit in x)
-                    queue = [xdec]
-                    try:
-                        index_attr = attractor_dict[xdec]
-                    except KeyError:
-                        while True:
-                            try: #check if we already know F(xdec)
-                                fxdec = dictF[xdec]
-                            except KeyError: #if not, then compute the F(xdec)
-                                fx = []
-                                for jj in range(N):
-                                    if degrees[jj]>0:
-                                        fx.append(F[jj][np.dot(x[I[jj]], powers_of_2s[degrees[jj]])])
-                                    else:#constant functions whose regulators were all fixed to a specific value
-                                        fx.append(F[jj][0])
-                                if N<64:
-                                    fxdec = np.dot(fx, powers_of_2)
-                                else:
-                                    fxdec = ''.join(str(bit) for bit in fx)               
-                                dictF.update({xdec: fxdec})
-                            try: #check if we already know the attractor of F(xdec) 
-                                index_attr = attractor_dict[fxdec]
-                                dummy_index_within_attractor_reached = attractor_state_dict[index_attr][fxdec]
-                                dummy_distance_from_attractor = distance_from_attractor_state_dict[index_attr][fxdec]
-                                attractor_dict.update(list(zip(queue, [index_attr]*len(queue))))
-                                attractor_state_dict[index_attr].update(list(zip(queue, [dummy_index_within_attractor_reached]*len(queue))))
-                                distance_from_attractor_state_dict[index_attr].update(
-                                    list(zip(queue, list(range(len(queue) + dummy_distance_from_attractor, dummy_distance_from_attractor, -1))))
-                                )
-                                break
-                            except KeyError: 
-                                try: #if not, then check if F(xdec) is already in the queue, i.e., if F(xdec) is part of an attractor itself
-                                    index = queue.index(fxdec)
-                                    index_attr = len(attractors)
-                                    attractor_dict.update(list(zip(queue, [index_attr]*len(queue))))
-                                    attractors.append(queue[index:])
-                                    #basin_sizes.append(1)
-                                    attractor_state_dict.append(dict(zip(queue, [0]*index + list(range(len(attractors[-1])))))
-                                    )
-                                    distance_from_attractor_state_dict.append(
-                                        dict(zip(queue, list(range(index, 0, -1)) + [0]*len(attractors[-1])))
-                                    )
-                                    ICs_per_attractor_state.append([0] * len(attractors[-1]))
-                                    counter_phase_shifts.append([0] * len(attractors[-1]))
-        
-                                    if len(attractors[-1]) == 1:
-                                        if N<64:
-                                            fixed_point = np.array(utils.dec2bin(queue[index], N))
-                                        else:
-                                            fixed_point = np.array(list(queue[index]), dtype=int)
-                                        states_attractors.append(fixed_point.reshape((1, N)))
-                                        mean_states_attractors.append(fixed_point)
-                                    else:
-                                        if N<64:
-                                            limit_cycle = np.array([utils.dec2bin(state, N) for state in queue[index:]])
-                                        else:
-                                            limit_cycle = np.array([np.array(list(state), dtype=int) for state in queue[index:]])          
-                                        states_attractors.append(limit_cycle)
-                                        mean_states_attractors.append(limit_cycle.mean(0))
-                                    break
-                                except ValueError: #if not, proceed by setting x = F(x)
-                                    x = np.array(fx)
-                            queue.append(fxdec)
-                            xdec = fxdec
-                    if index_attr_original == index_attr:
-                        attractor_coherence[index_attr_original] += 1
-                    else:
-                        attractor_fragility[index_attr_original] += np.sum(np.abs(mean_states_attractors[index_attr_original] - mean_states_attractors[index_attr]))
-        attractor_coherence = np.array([s/N/size_attr for s,size_attr in zip(attractor_coherence,map(len,attractors_original))])
-        attractor_fragility = np.array([s/N**2/size_attr for s,size_attr in zip(attractor_fragility,map(len,attractors_original))]) #something is wrong with attractor fragility, it returns values > 1 for small basins
-        results[0] = attractors_original
-        return tuple(results + [attractor_coherence,attractor_fragility])
+    return BN.get_attractors_and_robustness_measures_synchronous(number_different_IC, RETURN_ATTRACTOR_COHERENCE)
     
 
 def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns = [],left_side_of_truth_table=None):
@@ -1296,10 +596,7 @@ def get_attractors_synchronous_exact_with_external_inputs(F, I, input_patterns =
     return (attractors, len(attractors), basin_sizes, attractor_dict, state_space)
 
 
-
-
-
-def get_strongly_connected_components(I):
+def get_strongly_connected_components(BN):
     """
     Determine the strongly connected components of a wiring diagram.
 
@@ -1307,31 +604,15 @@ def get_strongly_connected_components(I):
     The function constructs a directed graph from these edges and returns its strongly connected components.
 
     Parameters:
-        I (list): A list of lists, where each inner list contains the regulators (source nodes) for the corresponding target node.
+        BN (BooleanNetwork): Boolean Network object.
 
     Returns:
         list: A list of sets, each representing a strongly connected component.
     """
-    edges_wiring_diagram = []
-    for target, regulators in enumerate(I):
-        for regulator in regulators:
-            edges_wiring_diagram.append((regulator, target))
-    subG = nx.from_edgelist(edges_wiring_diagram, create_using=nx.MultiDiGraph())
-    return [scc for scc in nx.strongly_connected_components(subG)]
+    return BN.get_strongly_connected_components()
 
-def get_modular_structure(I):
-    sccs = get_strongly_connected_components(I)
-    scc_dict = {}
-    for j,s in enumerate(sccs):
-        for el in s:
-            scc_dict.update({el:j})
-    dag = set()
-    for target,regulators in enumerate(I):
-        for regulator in regulators:
-            edge = (scc_dict[regulator],scc_dict[target])
-            if edge[0]!=edge[1]:
-                dag.add(edge)   
-    return dag
+def get_modular_structure(BN):
+    return BN.get_modular_structure()
 
 def topological_sort_dag(dag,num_sccs):
     visited_component = set()
@@ -1377,7 +658,7 @@ def load_modular_BN_ex1():
     
     F = [np.array(el) for el in F]
     I = [np.array(el) for el in I]    
-    return F,I,variables
+    return BooleanNetwork(F,I,[len(I[i]) for i in range(len(I))]),variables
 
 def get_attractors_synchronous_exact_exploiting_modularity(F, I):
     sccs = get_strongly_connected_components(I)
@@ -1471,7 +752,7 @@ def get_attractors_synchronous_exact_exploiting_modularity(F, I):
     return module_attractors_binary
 
 
-def adjacency_matrix(I, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
+def adjacency_matrix(BN, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
     """
     Construct the (binary) adjacency matrix from the wiring diagram.
 
@@ -1480,7 +761,7 @@ def adjacency_matrix(I, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=T
     Self-loops can be optionally ignored, and constant nodes can be excluded.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         constants (list, optional): List of constant nodes.
         IGNORE_SELFLOOPS (bool, optional): If True, self-loops are ignored.
         IGNORE_CONSTANTS (bool, optional): If True, constant nodes are excluded from the matrix.
@@ -1488,20 +769,10 @@ def adjacency_matrix(I, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=T
     Returns:
         np.array: The binary adjacency matrix.
     """
-    n = len(I)
-    n_constants = len(constants)
-    if IGNORE_CONSTANTS:
-        m = np.zeros((n - n_constants, n - n_constants), dtype=int)
-        for i in range(len(I)):
-            for j in I[i]:
-                if j < n - n_constants and (not IGNORE_SELFLOOPS or i != j):
-                    m[j, i] = 1
-        return m
-    else:
-        return adjacency_matrix(I, [], IGNORE_CONSTANTS=True)
+    return BN.get_adjacency_matrix(constants, IGNORE_SELFLOOPS, IGNORE_CONSTANTS)
 
 
-def get_signed_adjacency_matrix(I, type_of_each_regulation, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
+def get_signed_adjacency_matrix(BN, type_of_each_regulation, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
     """
     Construct the signed adjacency matrix of a Boolean network.
 
@@ -1509,7 +780,7 @@ def get_signed_adjacency_matrix(I, type_of_each_regulation, constants=[], IGNORE
     -1 for decreasing (inhibiting) regulations, and NaN for any other type.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         type_of_each_regulation (list): List of lists corresponding to the type of regulation ('increasing' or 'decreasing')
                                         for each edge in I.
         constants (list, optional): List of constant nodes.
@@ -1519,25 +790,10 @@ def get_signed_adjacency_matrix(I, type_of_each_regulation, constants=[], IGNORE
     Returns:
         np.array: The signed adjacency matrix.
     """
-    n = len(I)
-    n_constants = len(constants)
-    if IGNORE_CONSTANTS:
-        m = np.zeros((n - n_constants, n - n_constants), dtype=int)
-        for i, (regulators, type_of_regulation) in enumerate(zip(I, type_of_each_regulation)):
-            for j, t in zip(regulators, type_of_regulation):
-                if j < n - n_constants and (not IGNORE_SELFLOOPS or i != j):
-                    if t == 'increasing':
-                        m[j, i] = 1 
-                    elif t == 'decreasing':
-                        m[j, i] = -1 
-                    else:
-                        m[j, i] = np.nan
-        return m
-    else:
-        return get_signed_adjacency_matrix(I, type_of_each_regulation, [], IGNORE_CONSTANTS=True)
+    return BN.get_signed_adjacency_matrix(type_of_each_regulation, constants, IGNORE_SELFLOOPS, IGNORE_CONSTANTS)
 
 
-def get_signed_effective_graph(I, type_of_each_regulation, F, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
+def get_signed_effective_graph(BN, type_of_each_regulation, constants=[], IGNORE_SELFLOOPS=False, IGNORE_CONSTANTS=True):
     """
     Construct the signed effective graph of a Boolean network.
 
@@ -1546,9 +802,8 @@ def get_signed_effective_graph(I, type_of_each_regulation, F, constants=[], IGNO
     Edges are signed according to the type of regulation ('increasing' or 'decreasing').
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         type_of_each_regulation (list): List of lists specifying the type of regulation for each edge.
-        F (list): List of Boolean functions (truth tables) for each node.
         constants (list, optional): List of constant nodes.
         IGNORE_SELFLOOPS (bool, optional): If True, self-loops are ignored.
         IGNORE_CONSTANTS (bool, optional): If True, constant nodes are excluded.
@@ -1556,26 +811,10 @@ def get_signed_effective_graph(I, type_of_each_regulation, F, constants=[], IGNO
     Returns:
         np.array: The signed effective graph as a matrix of edge effectiveness values.
     """
-    n = len(I)
-    n_constants = len(constants)
-    if IGNORE_CONSTANTS:
-        m = np.zeros((n - n_constants, n - n_constants), dtype=float)
-        for i, (regulators, type_of_regulation) in enumerate(zip(I, type_of_each_regulation)):
-            effectivenesses = analyze_BF.get_edge_effectiveness(F[i])
-            for j, t, e in zip(regulators, type_of_regulation, effectivenesses):
-                if j < n - n_constants and (not IGNORE_SELFLOOPS or i != j):
-                    if t == 'increasing':
-                        m[j, i] = e
-                    elif t == 'decreasing':
-                        m[j, i] = -e
-                    else:
-                        m[j, i] = np.nan
-        return m
-    else:
-        return get_signed_effective_graph(I, type_of_each_regulation, F, [], IGNORE_CONSTANTS=True)
+    return BN.get_signed_effective_graph(type_of_each_regulation, constants, IGNORE_SELFLOOPS, IGNORE_CONSTANTS)
 
 
-def get_ffls(I, F=None):
+def get_ffls(BN):
     """
     Identify feed-forward loops (FFLs) in a Boolean network and optionally determine their types.
 
@@ -1583,9 +822,7 @@ def get_ffls(I, F=None):
     If F is provided, the function also computes the monotonicity of each regulation in the FFL.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
-        F (list, optional): List of Boolean functions (truth tables) for each node.
-                             If provided along with F, the types (monotonicities) of the regulations are computed.
+        BN (BooleanNetwork): Boolean Network object.
 
     Returns:
         If F is None:
@@ -1593,33 +830,10 @@ def get_ffls(I, F=None):
         Otherwise:
             tuple: A tuple (ffls, types), where ffls is a list of FFLs and types is a list of corresponding monotonicity types.
     """
-    ffls = []
-    types = []
-    for i in range(len(I)):
-        for j in range(i + 1, len(I)):
-            for k in range(len(I)):
-                if i == k or j == k:
-                    continue
-                # Check if there is an FFL: i regulates k and j regulates both i and k.
-                if i in I[k] and i in I[j] and j in I[k]:
-                    ffls.append([i, j, k])
-                    if F is not None:
-                        # Compute types if F is provided.
-                        # (This example assumes a helper function is_monotonic exists and that I is ordered.)
-                        #monotonic_i = is_monotonic(F[i], True)[1]
-                        monotonic_j = analyze_BF.is_monotonic(F[j], True)[1]
-                        monotonic_k = analyze_BF.is_monotonic(F[k], True)[1]
-                        direct = monotonic_k[I[k].index(i)]
-                        indirect1 = monotonic_j[I[j].index(i)]
-                        indirect2 = monotonic_k[I[k].index(j)]
-                        types.append([direct, indirect1, indirect2])
-    if F is not None:
-        return (ffls, types)
-    else:
-        return ffls
+    return BN.get_ffls()
 
 
-def get_ffls_from_I(I, types_I=None):
+def get_ffls_from_I(BN, types_I=None):
     """
     Identify feed-forward loops (FFLs) in a Boolean network based solely on the wiring diagram.
 
@@ -1627,7 +841,7 @@ def get_ffls_from_I(I, types_I=None):
     If types_I (the type of each regulation) is provided, it also returns the corresponding regulation types.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         types_I (list, optional): List of lists specifying the type (e.g., 'increasing' or 'decreasing') for each regulation.
 
     Returns:
@@ -1637,33 +851,7 @@ def get_ffls_from_I(I, types_I=None):
         Otherwise:
             list: A list of identified FFLs.
     """
-    all_tfs = list(range(len(I)))
-    n_tfs = len(all_tfs)
-    all_tfs_dict = dict(zip(all_tfs, list(range(n_tfs))))
-    I_inv = [[] for _ in all_tfs]
-    for target, el in enumerate(I):
-        for regulator in el:
-            I_inv[all_tfs_dict[regulator]].append(target)
-    ffls = []
-    types = []
-    for i in range(n_tfs):  # master regulators
-        for j in range(n_tfs):
-            if i == j or all_tfs[j] not in I_inv[i]:
-                continue
-            common_targets = list(set(I_inv[i]) & set(I_inv[j]))
-            for k in common_targets:
-                if all_tfs[j] == k or all_tfs[i] == k:
-                    continue
-                ffls.append([i, j, k])
-                if types_I is not None:
-                    direct = types_I[k][I[k].index(all_tfs[i])]
-                    indirect1 = types_I[all_tfs[j]][I[all_tfs[j]].index(all_tfs[i])]
-                    indirect2 = types_I[k][I[k].index(all_tfs[j])]
-                    types.append([direct, indirect1, indirect2])
-    if types_I is not None:
-        return (ffls, types)
-    else:
-        return ffls
+    return BN.get_ffls_from_I(types_I)
 
 
 def get_ffl_type_number(types_vector):
@@ -1709,7 +897,7 @@ def is_ffl_coherent(types_vector):
     return COHERENT
 
 
-def generate_networkx_graph(I, constants, variables):
+def generate_networkx_graph(BN, constants, variables):
     """
     Generate a NetworkX directed graph from a wiring diagram.
 
@@ -1717,40 +905,30 @@ def generate_networkx_graph(I, constants, variables):
     from each regulator to its target based on the wiring diagram I.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         constants (list): List of constant names.
         variables (list): List of variable names.
 
     Returns:
         networkx.DiGraph: The noderated directed graph.
     """
-    names = list(variables) + list(constants)
-    G = nx.DiGraph()
-    G.add_nodes_from(names)
-    G.add_edges_from([(names[I[i][j]], names[i]) for i in range(len(variables)) for j in range(len(I[i]))])
-    return G
+    return BN.generate_networkx_graph()
 
 
-def generate_networkx_graph_from_edges(I, n_variables):
+def generate_networkx_graph_from_edges(BN, n_variables):
     """
     Generate a NetworkX directed graph from an edge list derived from the wiring diagram.
 
     Only edges among the first n_variables (excluding constant self-loops) are included.
 
     Parameters:
-        I (list): List of lists, where I[i] contains the indices of regulators for node i.
+        BN (BooleanNetwork): Boolean Network object.
         n_variables (int): Number of variable nodes (constants are excluded).
 
     Returns:
         networkx.DiGraph: The generated directed graph.
     """
-    edges = []
-    for j, regulators in enumerate(I):
-        if j >= n_variables:  # Exclude constant self-loops
-            break
-        for i in regulators:
-            edges.append((i, j))
-    return nx.DiGraph(edges)
+    return BN.generate_networkx_graph_from_edges(n_variables)
 
 
 def simple_cycles(G, max_len=4):
@@ -1826,7 +1004,7 @@ def simple_cycles(G, max_len=4):
         sccs.extend(scc for scc in nx.strongly_connected_components(H) if len(scc) > 1)
 
 
-def get_type_of_loop(loop, F, I):
+def get_type_of_loop(BN, loop):
     """
     Determine the regulation types along a feedback loop.
 
@@ -1835,21 +1013,13 @@ def get_type_of_loop(loop, F, I):
     The loop is assumed to be ordered such that the first node is repeated at the end.
 
     Parameters:
+        BN (BooleanNetwork): Boolean Network object.
         loop (list): List of node indices representing the loop.
-        F (list): List of Boolean functions (truth tables) for each node.
-        I (list): List of regulator indices for each node.
 
     Returns:
         list: A list of regulation types corresponding to each edge in the loop.
     """
-    n = len(loop)
-    dummy = loop[:]
-    dummy.append(loop[0])
-    res = []
-    for i in range(n):
-        # Assumes is_monotonic returns a tuple with the monotonicity information.
-        res.append(analyze_BF.is_monotonic(F[dummy[i+1]], True)[1][list(I[dummy[i+1]]).index(dummy[i])])
-    return res
+    return BN.get_type_of_loop(loop)
 
 
 def get_loop_type_number(types_vector):
@@ -1891,24 +1061,3 @@ def is_pos_loop(types_vector):
     else:
         POSITIVE = (np.sum([1 if el == 'decreasing' else 0 for el in types_vector]) % 2) == 0
     return POSITIVE
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
