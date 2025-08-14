@@ -20,11 +20,27 @@ except ModuleNotFoundError:
     __LOADED_CANA__=False
 
 def from_cana_BooleanNode(BooleanNode):
-    return BooleanFunction(f=BooleanNode.outputs)
+    """
+    Compatability method: Transforms an instance of cana.boolean_node.BooleanNode to an instance of the class BooleanFunction, used in this toolbox.
+
+    Returns:
+        An instance of BooleanFunction
+    """
+    return BooleanFunction(np.array(BooleanNode.outputs,dtype=int))
+
+def from_pybooleannet_xxxxx(xxxxx):
+    """
+    Compatability method: Transforms an instance of pybooleannet.xxxx to an instance of the class BooleanFunction, used in this toolbox.
+
+    Returns:
+        An instance of BooleanFunction
+    """
+    return BooleanFunction(f = xxx)#TODO: figure out what exactly to pass
+
 
 class BooleanFunction:
     def __init__(self, f):
-        assert type(f) in [ list, np.array], "f must be an array"
+        assert type(f) in [ list, np.array, np.ndarray], "f must be an array"
         if type(f) == list:
             f = np.array(f)
         self.f = f
@@ -33,6 +49,27 @@ class BooleanFunction:
         else:
             self.n = int(np.log2(len(f)))
     
+    def to_cana_BooleanNode(self):
+        """
+        Compatability method: Transforms an instance of this class to an instance of cana.boolean_node.BooleanNode
+
+        Returns:
+            An instance of cana.boolean_node.BooleanNode
+        """
+        if __LOADED_CANA__:
+            return cana.boolean_node.BooleanNode(k=self.n, outputs=self.f)
+        print('The method \'get_effective_degree\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
+        return None
+    
+    def to_pybooleannet_xxxxx(self):
+        """
+        Compatability method: Transforms an instance of this class to an instance of pybooleannet.xxxxx
+
+        Returns:
+            An instance of pybooleannet.xxxx
+        """
+        return pybooleannet.xxxxxx(xxxxx)#TODO: figure out what exactly to pass
+        
     def is_constant(self):
         """
         Check whether a Boolean function is constant.
@@ -600,9 +637,7 @@ class BooleanFunction:
             return sum(self.get_edge_effectiveness())
         print('The method \'get_effective_degree\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
         return None
-    
-    def to_cana_BooleanNode(self):
-        return cana.boolean_node.BooleanNode(k=self.n, outputs=self.f)
+
 
 
     
