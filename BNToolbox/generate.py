@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jul 29 09:25:40 2025
+Last Edited on Wed Aug 13 2025
 
-@author: Claus Kadelka
+@author: Claus Kadelka, Benjamin Coberly
 """
 
 ##Imports
@@ -14,8 +15,7 @@ import networkx as nx
 import random
 
 import utils
-import analyze_BF
-
+from boolean_function import BooleanFunction as BF
 
 def random_function(n, probability_one=0.5):
     """
@@ -29,9 +29,9 @@ def random_function(n, probability_one=0.5):
         probability_one (float, optional): Probability that a given entry is 1 (default is 0.5).
 
     Returns:
-        np.array: Boolean function as an array of length 2^n.
+        BooleanFunction: Boolean function object.
     """
-    return np.array(np.random.random(2**n) < probability_one, dtype=int)
+    return BF(np.array(np.random.random(2**n) < probability_one, dtype=int))
 
 
 def random_linear_function(n):
@@ -45,10 +45,10 @@ def random_linear_function(n):
         n (int): Number of variables.
 
     Returns:
-        np.array: Boolean function as an array of length 2^n (truth table).
+        BooleanFunction: Boolean function object.
     """
     expr = '(%s) %% 2 == 1' % (' + '.join(['x%i' % i if random.random() > 0.5 else '(1 + x%i)' % i for i in range(n)]))
-    return utils.f_from_expression(expr)[0]
+    return BF(utils.f_from_expression(expr)[0])
 
 
 def random_non_degenerated_function(n, probability_one=0.5):
@@ -63,7 +63,7 @@ def random_non_degenerated_function(n, probability_one=0.5):
         probability_one (float, optional): Bias of the Boolean function (probability of a 1; default is 0.5).
 
     Returns:
-        np.array: Boolean function as an array of length 2^n.
+        BooleanFunction: Boolean function object.
     
     References:
         Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
@@ -71,7 +71,7 @@ def random_non_degenerated_function(n, probability_one=0.5):
     """
     while True:  # works well because most Boolean functions are non-degenerated
         f = random_function(n, probability_one)
-        if not analyze_BF.is_degenerated(f):
+        if not f.is_degenerated():
             return f
 
 
@@ -87,7 +87,7 @@ def random_degenerated_function(n, probability_one=0.5):
         probability_one (float, optional): Bias of the Boolean function (default is 0.5, i.e., unbiased).
 
     Returns:
-        np.array: Boolean function as an array of length 2^n that is degenerated in the first input (and possibly others).
+        BooleanFunction: Boolean function object that is degenerated in the first input (and possibly others).
     
     References:
         Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
@@ -98,9 +98,9 @@ def random_degenerated_function(n, probability_one=0.5):
     index_non_essential_variable = int(random.random()*n)
     f = np.zeros(2**n, dtype=int)
     indices = (np.arange(2**n)//(2**index_non_essential_variable))%2==1
-    f[indices] = f_original
-    f[~indices] = f_original
-    return f
+    f[indices] = f_original.f
+    f[~indices] = f_original.f
+    return BF(f)
 
 
 def random_non_canalizing_function(n, probability_one=0.5):
@@ -115,7 +115,7 @@ def random_non_canalizing_function(n, probability_one=0.5):
         probability_one (float, optional): Bias of the Boolean function (default is 0.5, i.e., unbiased).
 
     Returns:
-        np.array: Boolean function as an array of length 2^n.
+        BooleanFunction: Boolean function object.
     
     References:
         Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
@@ -123,8 +123,8 @@ def random_non_canalizing_function(n, probability_one=0.5):
     """
     assert type(n)==int and n > 1, "n must be an integer > 1"
     while True:  # works because most functions are non-canalizing
-        f = np.array(np.random.random(2**n) < probability_one, dtype=int)
-        if not analyze_BF.is_canalizing(f):
+        f = BF(np.array(np.random.random(2**n) < probability_one, dtype=int))
+        if not f.is_canalizing():
             return f
 
 
@@ -139,7 +139,7 @@ def random_non_canalizing_non_degenerated_function(n, probability_one=0.5):
         probability_one (float, optional): Bias of the Boolean function (default is 0.5, i.e., unbiased).
 
     Returns:
-        np.array: Boolean function as an array of length 2^n.
+        BooleanFunction: Boolean function object.
     
     References:
         Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness 
@@ -147,8 +147,8 @@ def random_non_canalizing_non_degenerated_function(n, probability_one=0.5):
     """
     assert type(n)==int and n > 1, "n must be an integer > 1"
     while True:  # works because most functions are non-canalizing and non-degenerated
-        f = np.array(np.random.random(2**n) < probability_one, dtype=int)
-        if not analyze_BF.is_canalizing(f) and not analyze_BF.is_degenerated(f):
+        f = BF(np.array(np.random.random(2**n) < probability_one, dtype=int))
+        if not f.is_canalizing() and not f.is_degenerated():
             return f
 
 
@@ -189,9 +189,9 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, 
     f = np.zeros(num_values, dtype=int)
     if k < n:
         if EXACT_DEPTH:
-            core_polynomial = random_non_canalizing_non_degenerated_function(n - k)
+            core_polynomial = random_non_canalizing_non_degenerated_function(n - k).f
         else:
-            core_polynomial = random_non_degenerated_function(n - k)
+            core_polynomial = random_non_degenerated_function(n - k).f
     else:
         core_polynomial = [1 - bbs[-1]]
     counter_non_canalized_positions = 0
@@ -203,7 +203,7 @@ def random_k_canalizing(n, k, EXACT_DEPTH=False, left_side_of_truth_table=None, 
         else:
             f[i] = core_polynomial[counter_non_canalized_positions]
             counter_non_canalized_positions += 1
-    return f
+    return BF(f)
 
 
 def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DEPTH=False, left_side_of_truth_table=None):
@@ -254,9 +254,9 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
     f = np.zeros(num_values, dtype=int)
     if k < n:
         if EXACT_DEPTH:
-            core_polynomial = random_non_canalizing_non_degenerated_function(n - k)
+            core_polynomial = random_non_canalizing_non_degenerated_function(n - k).f
         else:
-            core_polynomial = random_non_degenerated_function(n - k)
+            core_polynomial = random_non_degenerated_function(n - k).f
     else:
         core_polynomial = [1 - bbs[-1]]
     counter_non_canalized_positions = 0
@@ -268,7 +268,7 @@ def random_k_canalizing_with_specific_layerstructure(n, layerstructure, EXACT_DE
         else:
             f[i] = core_polynomial[counter_non_canalized_positions]
             counter_non_canalized_positions += 1
-    return f
+    return BF(f)
 
 
 def random_adjacency_matrix(N, ns, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=False):

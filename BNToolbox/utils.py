@@ -148,23 +148,6 @@ def f_from_expression(expr):
         x = list(map(bool, x))
         f.append(int(eval(expr)))  # x_val is used implicitly in the eval context
     return f, var
-        
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
