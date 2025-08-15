@@ -43,7 +43,7 @@ def dec2bin(integer_value, num_bits):
     return [int(bit) for bit in binary_string]
 
 
-def bool_to_poly(f, left_side_of_truth_table=[], prefix='x', indices=[]):
+def bool_to_poly(f, left_side_of_truth_table=None, variables=None, prefix=''):
     """
     Transform a Boolean function from truth table format to polynomial format in non-reduced DNF.
 
@@ -51,25 +51,26 @@ def bool_to_poly(f, left_side_of_truth_table=[], prefix='x', indices=[]):
         f (list): Boolean function as a vector (list of length 2^n, where n is the number of inputs).
         left_side_of_truth_table (list, optional): The left-hand side of the Boolean truth table 
             (a list of tuples of size 2^n x n). If provided, it speeds up computation.
-        prefix (str, optional): Prefix for variable names in the polynomial.
         indices (list, optional): List of indices to use for variable naming. If empty or not matching 
-            the required number, defaults to list(range(1, n+1)).
+            the required number, defaults to list(range(n)).
+        prefix (str, optional): Prefix for variable names in the polynomial, default ''.
 
     Returns:
         str: A string representing the Boolean function in disjunctive normal form (DNF).
     """
     len_f = len(f)
     n = int(np.log2(len_f))
-    if len(indices) == 0 or len(indices) != n:
-        indices = list(range(1, n + 1))
-    if left_side_of_truth_table == []:  # to reduce run time, this should be calculated once and then passed as argument
+    if variables is None or len(variables) != n:
+        prefix = 'x'
+        variables = [prefix+str(i) for i in range(n)]
+    if left_side_of_truth_table is None:  # to reduce run time, this should be calculated once and then passed as argument
         left_side_of_truth_table = list(itertools.product([0, 1], repeat=n))
     num_values = 2 ** n
     text = []
     for i in range(num_values):
         if f[i] == True:
-            monomial = '*'.join([(prefix + '%i' % (j)) if entry == 1 else ('(1-' + prefix + '%i)' % (j)) 
-                                  for j, entry in zip(indices, left_side_of_truth_table[i])])
+            monomial = ' * '.join([('%s' % (v)) if entry == 1 else ('(1 - %s)' % (v)) 
+                                  for v, entry in zip(variables, left_side_of_truth_table[i])])
             text.append(monomial)
     if text != []:
         return ' + '.join(text)
@@ -127,13 +128,13 @@ def f_from_expression(expr):
         >>> f_from_expression('(x1 + x2 + x3) % 2 == 0')
         ([1, 0, 0, 1, 0, 1, 1, 0], ['x1', 'x2', 'x3'])
     """
-    expr = expr.replace('(', ' ( ').replace(')', ' ) ')
+    expr = expr.replace('(', ' ( ').replace(')', ' ) ').replace('!','not ').replace('~','not ')
     expr_split = expr.split(' ')
     var = []
     dict_var = dict()
     n_var = 0
     for i, el in enumerate(expr_split):
-        if el not in ['',' ','(',')','and','or','not','AND','OR','NOT','&','|','~','+','-','*','%','>','>=','==','<=','<'] and not el.isdigit():
+        if el not in ['',' ','(',')','and','or','not','AND','OR','NOT','&','|','+','-','*','%','>','>=','==','<=','<',] and not el.isdigit():
             try:
                 new_var = dict_var[el]
             except KeyError:
@@ -144,12 +145,17 @@ def f_from_expression(expr):
             expr_split[i] = new_var
         elif el in ['AND','OR','NOT']:
             expr_split[i] = el.lower()
+        elif el == '&':
+            expr_split[i] = 'and'
+        elif el == '|':
+            expr_split[i] = 'or'
     expr = ' '.join(expr_split)
     f = []
     for x in itertools.product([0, 1], repeat=n_var):
         x = list(map(bool, x))
         f.append(int(eval(expr)))  # x_val is used implicitly in the eval context
     return f, var
+
 
 def flatten(l):
     return [item for sublist in l for item in sublist]

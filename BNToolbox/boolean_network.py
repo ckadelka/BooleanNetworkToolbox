@@ -27,14 +27,38 @@ except ModuleNotFoundError:
 def from_cana_BooleanNetwork(BooleanNetwork):
     return BooleanNetwork(F = xxx, I = xxx)#TODO: figure out what exactly to pass
 
-def from_pybooleannet_xxxxx(xxxxx):
-    return BooleanNetwork(F = xxx, I = xxx)#TODO: figure out what exactly to pass
+def pyboolnet_bnet_to_BooleanNetwork(bnet):
+    """
+    Compatability method: Transforms a bnet object from the pyboolnet library to an instance of the class BooleanNetwork, used in this toolbox.
+
+    Returns:
+        An instance of BooleanFunction
+    """
+    variables = []
+    functions = []
+    for line in bnet.split('\n'):
+        try:
+            functions.append(line.split(',')[1].strip())
+            variables.append(line.split(',')[0])
+        except IndexError:
+            continue
+    dict_variables = dict(zip(variables,range(len(variables))))
+    F = []
+    I = []
+    for function in functions:
+        f,var = utils.f_from_expression(function)
+        F.append(f)
+        I.append([dict_variables[v] for v in var])        
+    return BooleanNetwork(F=F,I=I,variables=variables)
+
 
 class BooleanNetwork:
-    def __init__(self, F, I, left_side_of_truth_table = None):
+    def __init__(self, F, I, variables=None, left_side_of_truth_table = None):
         assert type(F) in [ list, np.array, np.ndarray ], "F must be an array"
         assert type(I) in [ list, np.array, np.ndarray ], "I must be an array"
         #assert (len(I[i]) == ns[i] for i in range(len(ns))), "Malformed wiring diagram I"
+        assert variables is None or len(F)==len(variables), "len(F)==len(variables) required if variable names are provided"
+        assert len(F)==len(I), "len(F)==len(I) required"
         
         self.F = []
         for f in F:
@@ -46,14 +70,22 @@ class BooleanNetwork:
                 raise TypeError(f"F holds invalid data type {type(f)} : Expected either list, numpy array, or BooleanFunction")
                 
         self.N = len(F)
-        self.I = I
+        if variables is None:
+            self.variables = np.array(['x'+str(i) for i in range(len(F))])
+        else:
+            self.variables = np.array(variables)
+        self.I = [np.array(regulators,dtype=int) for regulators in I]
         self.lstt = left_side_of_truth_table #TODO: pass as argument in the two functions that use it
     
     def to_cana_BooleanNetwork(self):
         return cana.boolean_network.BooleanNetwork(xxxxx)#TODO: figure out what exactly to pass
 
-    def to_pybooleannet_xxxxx(self):
-        return pybooleannet.xxxxxx(xxxxx)#TODO: figure out what exactly to pass
+    def to_pyboolnet_bnet(self):
+        lines = []
+        for bf,regulators,variable in zip(self.F,self.I,self.variables):
+            polynomial = utils.bool_to_poly(bf.f,variables=self.variables[regulators])
+            lines.append(f'{variable},    {polynomial}')
+        return '\n'.join(lines)
         
     def update_single_node(self, index, states_regulators):
         """

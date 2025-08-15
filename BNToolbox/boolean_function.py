@@ -18,8 +18,18 @@ try:
 except ModuleNotFoundError:
     print('The module cana cannot be found. Ensure it is installed to use all functionality of this toolbox.')
     __LOADED_CANA__=False
+    
+try:
+    import pyboolnet# import bnet2primes, primes2bnet
+    __LOADED_PYBOOLNET__=True
+except ModuleNotFoundError:
+    print('The module pyboolnet cannot be found. Ensure it is installed to use all functionality of this toolbox.')
+    __LOADED_PYBOOLNET__=False
 
-def from_cana_BooleanNode(BooleanNode):
+
+
+
+def cana_BooleanNode_to_BooleanFunction(BooleanNode):
     """
     Compatability method: Transforms an instance of cana.boolean_node.BooleanNode to an instance of the class BooleanFunction, used in this toolbox.
 
@@ -27,15 +37,6 @@ def from_cana_BooleanNode(BooleanNode):
         An instance of BooleanFunction
     """
     return BooleanFunction(np.array(BooleanNode.outputs,dtype=int))
-
-def from_pybooleannet_xxxxx(xxxxx):
-    """
-    Compatability method: Transforms an instance of pybooleannet.xxxx to an instance of the class BooleanFunction, used in this toolbox.
-
-    Returns:
-        An instance of BooleanFunction
-    """
-    return BooleanFunction(f = xxx)#TODO: figure out what exactly to pass
 
 
 def get_layer_structure_from_can_outputs(can_outputs):
