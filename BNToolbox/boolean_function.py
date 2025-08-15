@@ -76,15 +76,6 @@ class BooleanFunction:
         print('The method \'to_cana_BooleanNode\' requires the module cana, which cannot be found. Ensure it is installed to use this functionality.')
         return None
     
-    def to_pybooleannet_xxxxx(self):
-        """
-        Compatability method: Transforms an instance of this class to an instance of pybooleannet.xxxxx
-
-        Returns:
-            An instance of pybooleannet.xxxx
-        """
-        return pybooleannet.xxxxxx(xxxxx)#TODO: figure out what exactly to pass
-        
     def is_constant(self):
         """
         Check whether a Boolean function is constant.

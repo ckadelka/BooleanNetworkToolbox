@@ -73,7 +73,7 @@ for w in range(1,2**(n-1),2):
     assert test,"generate.random_NCF failed for n = {n} and layer_structure = {layer_structure}"
 
 
-#TODO: Add thorough testing and examples for generate.random_BN
+#TODO: Add thorough testing and examples for generate.random_network
 
 
 

@@ -15,7 +15,7 @@ import math
 from collections import defaultdict
 
 import utils
-from boolean_function import BooleanFunction as BF
+import boolean_function
 
 try:
     import cana.boolean_network
@@ -24,15 +24,35 @@ except ModuleNotFoundError:
     print('The module cana cannot be found. Ensure it is installed to use all functionality of this toolbox.')
     __LOADED_CANA__=False
 
-def from_cana_BooleanNetwork(BooleanNetwork):
-    return BooleanNetwork(F = xxx, I = xxx)#TODO: figure out what exactly to pass
+def cana_BooleanNetwork_to_BooleanNetwork(cana_BooleanNetwork):
+    """
+    Compatability method: Transforms an instance of the class cana.BooleanNetwork from the cana module to an instance of the class BooleanNetwork, used in this toolbox.
+
+    Returns:
+        An instance of BooleanNetwork
+    """
+    F = []
+    I = []
+    variables = []
+    for entry in cana_BooleanNetwork.logic.values():
+        try:
+            variables.append(entry['name'])
+        except KeyError:
+            pass
+        try:
+            F.append(entry['out'])
+            I.append(entry['in'])
+        except KeyError:
+            pass            
+    return BooleanNetwork(F = F, I = I, variables=variables)
+
 
 def pyboolnet_bnet_to_BooleanNetwork(bnet):
     """
-    Compatability method: Transforms a bnet object from the pyboolnet library to an instance of the class BooleanNetwork, used in this toolbox.
+    Compatability method: Transforms a bnet object from the pyboolnet module to an instance of the class BooleanNetwork, used in this toolbox.
 
     Returns:
-        An instance of BooleanFunction
+        An instance of BooleanNetwork
     """
     variables = []
     functions = []
@@ -63,8 +83,8 @@ class BooleanNetwork:
         self.F = []
         for f in F:
             if type(f) in [ list, np.array ]:
-                self.F.append(BF(f))
-            elif type(f) == BF:
+                self.F.append(boolean_function.BooleanFunction(f))
+            elif type(f) == boolean_function.BooleanFunction:
                 self.F.append(f)
             else:
                 raise TypeError(f"F holds invalid data type {type(f)} : Expected either list, numpy array, or BooleanFunction")
@@ -77,9 +97,24 @@ class BooleanNetwork:
         self.I = [np.array(regulators,dtype=int) for regulators in I]
     
     def to_cana_BooleanNetwork(self):
-        return cana.boolean_network.BooleanNetwork(xxxxx)#TODO: figure out what exactly to pass
+        """
+        Compatability method: Transforms an instance of the class BooleanNetwork, used in this toolbox, into an instance of the class cana.BooleanNetwork from the cana module.
 
+        Returns:
+            An instance of cana.boolean_network.BooleanNetwork
+        """
+        logic_dicts = []
+        for bf,regulators,var in zip(self.F,self.I,self.variables):
+            logic_dicts.append({'name':var, 'in': list(regulators), 'out': list(bf.f)})
+        return cana.boolean_network.BooleanNetwork(Nnodes = self.N, logic = dict(zip(range(self.N),logic_dicts)))
+    
     def to_pyboolnet_bnet(self):
+        """
+        Compatability method: Transforms an instance of the class BooleanNetwork, used in this toolbox, into a bnet object from the pyboolnet module.
+    
+        Returns:
+            A string describing a bnet from the pyboolnet module.
+        """
         lines = []
         for bf,regulators,variable in zip(self.F,self.I,self.variables):
             polynomial = utils.bool_to_poly(bf.f,variables=self.variables[regulators])
@@ -583,11 +618,11 @@ class BooleanNetwork:
                 I_essential.append(regulators) #keep all regulators (unable to determine if all are essential)
                 continue
             elif sum(bf.f) == 0: #constant zero function
-                F_essential.append(BF(np.array([0])))
+                F_essential.append(boolean_function.BooleanFunction(np.array([0])))
                 I_essential.append(np.array([], dtype=int))
                 continue
             elif sum(bf.f) == len(bf.f): #constant one function
-                F_essential.append(BF(np.array([1])))
+                F_essential.append(boolean_function.BooleanFunction(np.array([1])))
                 I_essential.append(np.array([], dtype=int))
                 continue
             essential_variables = np.array(bf.get_essential_variables())
@@ -598,7 +633,7 @@ class BooleanNetwork:
                 I_essential.append(regulators)
             else:
                 left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
-                F_essential.append(BF(bf.f[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0]))
+                F_essential.append(boolean_function.BooleanFunction(bf.f[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0]))
                 I_essential.append(np.array(regulators)[essential_variables])
         return BooleanNetwork(F_essential, I_essential, self.variables)
 
