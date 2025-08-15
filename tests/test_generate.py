@@ -9,9 +9,12 @@ Created on Thu Aug 14 15:16:55 2025
 import sys
 sys.path.append('../BNToolbox/')
 
-import generate
 import numpy as np
 import boolean_function
+
+import generate
+import utils
+
 
 n=np.random.randint(2,9)
 probability_one = np.random.random()
@@ -29,7 +32,8 @@ assert bf.get_layer_structure()['CanalizingDepth']==0 and min(bf.get_edge_effect
 
 
 
-n=np.random.randint(2,9)
+n=np.random.randint(1,9)
+n=1
 k=np.random.randint(0,n)
 if k==n-1:#Boolean functions with exact canalizing depth k==n-1 do not exist
     k+=1
@@ -67,7 +71,7 @@ assert bf.is_k_canalizing(n),"generate.random_NCF failed"
 
 #Generate all possible layer structures of n-input NCFs and test if the correct layer structure is recovered
 for w in range(1,2**(n-1),2):
-    layer_structure = generate.get_layer_structure_of_an_NCF_given_its_Hamming_weight(n,w)[-1]
+    layer_structure = utils.get_layer_structure_of_an_NCF_given_its_Hamming_weight(n,w)[-1]
     bf = generate.random_nested_canalizing_function(n,layer_structure=layer_structure)
     test = np.all(np.array(boolean_function.get_layer_structure_from_can_outputs(bf.get_layer_structure()['CanalizingOutputs'])) == np.array(layer_structure))
     assert test,"generate.random_NCF failed for n = {n} and layer_structure = {layer_structure}"

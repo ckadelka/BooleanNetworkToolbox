@@ -701,6 +701,9 @@ class BooleanNetwork:
 
         Returns:
             float: The average Hamming distance (Derrida value) over nsim simulations.
+        
+        References:
+            Derrida, B., & Pomeau, Y. (1986). Random networks of automata: a simple annealed approximation. Europhysics letters, 1(2), 45.
         """
         if EXACT:
             return np.mean([bf.get_average_sensitivity(EXACT=True,NORMALIZED=False) for bf in self.F])
@@ -727,15 +730,21 @@ class BooleanNetwork:
             dict: A dictionary containing:
                 - Attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
                 - ExactNumberOfAttractors (int): The exact number of network attractors.
-                - ExactBasinSizes (list): List of basin sizes for each attractor.
+                - BasinSizes (list): List of exact basin sizes for each attractor.
                 - AttractorDict (dict): Dictionary mapping each state (in decimal) to its attractor index.
                 - StateSpace (np.array): The constructed state space matrix (of shape (2^N, N)).
-                - Coherence (float): overall network coherence
-                - Fragility (float): overall network fragility
-                - ExactBasinCoherence (list): coherence of each basin.
-                - ExactBasinFragility (list): fragility of each basin.
-                - AttractorCoherence (list): attractor coherence of each basin (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
-                - AttractorFragility (list): attractor fragility of each basin  (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+                - Coherence (float): overall exact network coherence
+                - Fragility (float): overall exact network fragility
+                - BasinCoherence (list): exact coherence of each basin.
+                - BasinFragility (list): exact fragility of each basin.
+                - AttractorCoherence (list): exact coherence of each attractor.
+                - AttractorFragility (list): exact fragility of each attractor.
+        
+        References:
+            [1] Park, K. H., Costa, F. X., Rocha, L. M., Albert, R., & Rozum, J. C. (2023).
+                Models of cell processes are far from the edge of chaos. PRX life, 1(2), 023009.
+            [2] Bavisetty, V. S. N., Wheeler, M., & Kadelka, C. (2025). 
+                xxxx arXiv preprint arXiv:xxx.xxx.
         """
         if left_side_of_truth_table is None:
             left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=self.N)))))
@@ -819,10 +828,10 @@ class BooleanNetwork:
         coherence = np.dot(basin_sizes,basin_coherences)
         fragility = np.dot(basin_sizes,basin_fragilities)
         
-        return dict(zip(["Attractors", "ExactNumberOfAttractors", "ExactBasinSizes",
+        return dict(zip(["Attractors", "ExactNumberOfAttractors", "BasinSizes",
                          "AttractorDict", "StateSpace",
                          "Coherence", "Fragility",
-                         "ExactBasinCoherence", "ExactBasinFragility",
+                         "BasinCoherence", "BasinFragility",
                          "AttractorCoherence", "AttractorFragility"],
                     (attractors, n_attractors, basin_sizes, 
                 attractor_dict, state_space,
@@ -831,7 +840,7 @@ class BooleanNetwork:
                 attractor_coherences, attractor_fragilities)))
 
 
-    def get_attractors_and_robustness_measures_synchronous(self, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
+    def get_attractors_and_robustness_measures_synchronous(self, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = True):
         """
         Approximate global robustness measures and attractors.
 
@@ -847,20 +856,26 @@ class BooleanNetwork:
 
         Parameters:
             number_different_IC (int, optional): Number of different initial conditions to sample (default is 500).
-            RETURN_ATTRACTOR_COHERENCE (bool, optional): Determines whether the attractor coherence should also be computed (default is No, i.e., False).
+            RETURN_ATTRACTOR_COHERENCE (bool, optional): Determines whether the attractor coherence should also be computed (default True, i.e., Yes).
 
         Returns:
             dict: A dictionary containing:
                 - Attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
                 - LowerBoundOfNumberOfAttractors (int): The lower bound on the number of attractors found.
-                - BasinSizesApproximation (list): List of basin sizes for each attractor.
+                - BasinSizes (list): List of basin sizes for each attractor.
                 - CoherenceApproximation (float): The approximate overall network coherence.
                 - FragilityApproximation (float): The approximate overall network fragility.
-                - FinalHammingDistanceApproximation (float): The approximated final Hamming distance measure.
+                - FinalHammingDistanceApproximation (float): The approximate final Hamming distance measure.
                 - BasinCoherenceApproximation (list): The approximate coherence of each basin.
                 - BasinFragilityApproximation (list): The approximate fragility of each basin.
                 - AttractorCoherence (list): The exact coherence of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
                 - AttractorFragility (list): The exact fragility of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+        
+        References:
+            [1] Park, K. H., Costa, F. X., Rocha, L. M., Albert, R., & Rozum, J. C. (2023).
+                Models of cell processes are far from the edge of chaos. PRX life, 1(2), 023009.
+            [2] Bavisetty, V. S. N., Wheeler, M., & Kadelka, C. (2025). 
+                xxxx arXiv preprint arXiv:xxx.xxx.
         """
         def lcm(a, b):
             return abs(a*b) // math.gcd(a, b)
@@ -1111,7 +1126,7 @@ class BooleanNetwork:
                             attractor_fragility[index_attr_original] += np.sum(np.abs(mean_states_attractors[index_attr_original] - mean_states_attractors[index_attr]))
             attractor_coherence = np.array([s/self.N/size_attr for s,size_attr in zip(attractor_coherence,map(len,attractors_original))])
             attractor_fragility = np.array([s/self.N**2/size_attr for s,size_attr in zip(attractor_fragility,map(len,attractors_original))]) #something is wrong with attractor fragility, it returns values > 1 for small basins
-            results[0] = attractors_original
+            results[0] = attractors_original #important! It may be that new attractors were found, reset the count
             return dict(zip(["Attractors", "LowerBoundOfNumberOfAttractors", "BasinSizesApproximation",
                              "CoherenceApproximation", "FragilityApproximation", "FinalHammingDistanceApproximation",
                              "BasinCoherenceApproximation", "BasinFragilityApproximation",

@@ -303,47 +303,6 @@ def random_nested_canalizing_function(n,layer_structure=None,left_side_of_truth_
         return random_k_canalizing_function_with_specific_layer_structure(n,layer_structure,EXACT_DEPTH=False, left_side_of_truth_table=left_side_of_truth_table)
 
 
-def get_layer_structure_of_an_NCF_given_its_Hamming_weight(n, w):
-    """
-    Compute the canalizing layer structure of a nested canalizing function (NCF) given its Hamming weight.
-
-    There exists a bijection between the Hamming weight (with w equivalent to 2^n - w) and the canalizing layer structure of an NCF.
-    The layer structure is represented as [k_1, ..., k_r], where each k_i ≥ 1 and, if n > 1, for the last layer k_r ≥ 2.
-
-    Parameters:
-        n (int): Number of inputs (variables) of the NCF.
-        w (int): Odd Hamming weight of the NCF, i.e., the number of 1s in the 2^n-vector representation of the function.
-
-    Returns:
-        tuple: A tuple (r, layer_structure_NCF), where:
-            - r (int): The number of canalizing layers.
-            - layer_structure_NCF (list): A list [k_1, ..., k_r] describing the number of variables in each layer.
-
-    References:
-        Kadelka, C., Kuipers, J., & Laubenbacher, R. (2017). The influence of canalization on the robustness of Boolean networks.
-        Physica D: Nonlinear Phenomena, 353, 39-47.
-    """
-    if w == 1:
-        r = 1
-        layer_structure_NCF = [n]
-    else:
-        assert type(w) == int or type(w) == np.int64, 'Hamming weight must be an integer'
-        assert 1 <= w <= 2**n - 1, 'Hamming weight w must satisfy 1 <= w <= 2^n - 1'
-        assert w % 2 == 1, 'Hamming weight must be an odd integer since all NCFs have an odd Hamming weight.'
-        w_bin = utils.dec2bin(w, n)
-        current_el = w_bin[0]
-        layer_structure_NCF = [1]
-        for el in w_bin[1:-1]:
-            if el == current_el:
-                layer_structure_NCF[-1] += 1
-            else:
-                layer_structure_NCF.append(1)
-                current_el = el
-        layer_structure_NCF[-1] += 1
-        r = len(layer_structure_NCF)
-    return (r, layer_structure_NCF)
-
-
 def random_adjacency_matrix(N, indegrees, NO_SELF_REGULATION=True, STRONGLY_CONNECTED=False):
     """
     Generate a random adjacency matrix for a network of N nodes.
