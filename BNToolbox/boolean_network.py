@@ -565,8 +565,6 @@ class BooleanNetwork:
         The resulting network contains, for each node, a reduced truth table (with only the essential inputs)
         and a corresponding list of essential regulators.
 
-        Parameters:
-
         Returns:
             tuple: (F_essential, I_essential) where:
                 - F_essential is a list of N Boolean functions (truth tables) of length 2^(m_i), with m_i ≤ n_i,
@@ -576,7 +574,7 @@ class BooleanNetwork:
         F_essential = []
         I_essential = []
         for bf, regulators in zip(self.F, self.I):
-            if len(bf.f) == 0:  # happens if the actual degree of f was too large for it to be loaded
+            if len(bf.f) == 0:  # happens for biological networks if the actual degree of f was too large for it to be loaded
                 F_essential.append(bf)
                 I_essential.append(regulators) #keep all regulators (unable to determine if all are essential)
                 continue
@@ -636,7 +634,8 @@ class BooleanNetwork:
         dummy = list(I_new[control_target])
         dummy.remove(control_source)
         I_new[control_target] = np.array(dummy)
-        return BooleanNetwork(F_new, I_new)
+        return BooleanNetwork(F_new, I_new, self.variables)
+
 
     def get_external_inputs(self):
         """
@@ -678,6 +677,7 @@ class BooleanNetwork:
                 FY = self.update_network_synchronously(Y)
                 hamming_distances.append(sum(FX != FY))
             return np.mean(hamming_distances)
+
 
     def get_attractors_and_robustness_measures_synchronous_exact(self):
         """
