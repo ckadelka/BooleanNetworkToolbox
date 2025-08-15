@@ -26,9 +26,6 @@ except ModuleNotFoundError:
     print('The module pyboolnet cannot be found. Ensure it is installed to use all functionality of this toolbox.')
     __LOADED_PYBOOLNET__=False
 
-
-
-
 def cana_BooleanNode_to_BooleanFunction(BooleanNode):
     """
     Compatability method: Transforms an instance of cana.boolean_node.BooleanNode to an instance of the class BooleanFunction, used in this toolbox.

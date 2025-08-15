@@ -53,7 +53,7 @@ def pyboolnet_bnet_to_BooleanNetwork(bnet):
 
 
 class BooleanNetwork:
-    def __init__(self, F, I, variables=None, left_side_of_truth_table = None):
+    def __init__(self, F, I, variables=None):
         assert type(F) in [ list, np.array, np.ndarray ], "F must be an array"
         assert type(I) in [ list, np.array, np.ndarray ], "I must be an array"
         #assert (len(I[i]) == ns[i] for i in range(len(ns))), "Malformed wiring diagram I"
@@ -75,7 +75,6 @@ class BooleanNetwork:
         else:
             self.variables = np.array(variables)
         self.I = [np.array(regulators,dtype=int) for regulators in I]
-        self.lstt = left_side_of_truth_table #TODO: pass as argument in the two functions that use it
     
     def to_cana_BooleanNetwork(self):
         return cana.boolean_network.BooleanNetwork(xxxxx)#TODO: figure out what exactly to pass
@@ -173,7 +172,7 @@ class BooleanNetwork:
         return Fx
 
 
-    def get_steady_states_asynchronous(self, nsim=500, EXACT=False, 
+    def get_steady_states_asynchronous(self, nsim=500, EXACT=False, left_side_of_truth_table=None,
                                        initial_sample_points=[], search_depth=50, SEED=-1, DEBUG=False):
         """
         Compute the steady states of a Boolean network under asynchronous updates.
@@ -195,17 +194,17 @@ class BooleanNetwork:
             DEBUG (bool, optional): If True, print debugging information during simulation.
 
         Returns:
-            tuple: A tuple containing:
-                - steady_states (list): List of steady state values (in decimal form) found.
-                - number_of_steady_states (int): Total number of unique steady states.
-                - basin_sizes (list): List of counts showing how many initial conditions converged to each steady state.
-                - steady_state_dict (dict): Dictionary mapping a steady state (in decimal) to its index in the steady_states list.
-                - dictF (dict): Dictionary caching state transitions. Keys are tuples (xdec, i) and values are the updated state.
-                - SEED (int): The random seed used for the simulation.
-                - initial_sample_points (list): The list of initial sample points used (if provided) or those generated during simulation.
+            dict: A dictionary containing:
+                - SteadyStates (list): List of steady state values (in decimal form) found.
+                - NumberOfSteadyStates (int): Total number of unique steady states.
+                - BasinSizes (list): List of counts showing how many initial conditions converged to each steady state.
+                - SteadyStateDict (dict): Dictionary mapping a steady state (in decimal) to its index in the steady_states list.
+                - FunctionTransitionDict (dict): Dictionary caching state transitions. Keys are tuples (xdec, i) and values are the updated state.
+                - Seed (int): The random seed used for the simulation.
+                - InitialSamplePoints (list): The list of initial sample points used (if provided) or those generated during simulation.
         """
-        if EXACT and self.lstt is None:
-            self.lstt = list(map(np.array, list(itertools.product([0, 1], repeat=self.N))))
+        if EXACT and left_side_of_truth_table is None:
+            left_side_of_truth_table = list(map(np.array, list(itertools.product([0, 1], repeat=self.N))))
 
         sampled_points = []
         
@@ -226,7 +225,7 @@ class BooleanNetwork:
         
         for iteration in range(nsim if not EXACT else 2**self.N):
             if EXACT:
-                x = self.lstt[iteration]
+                x = left_side_of_truth_table[iteration]
                 xdec = iteration
             else:
                 if initial_sample_points == []:  # generate random initial states on the fly
@@ -287,8 +286,9 @@ class BooleanNetwork:
             print('Warning: only %i of the %i tested initial conditions eventually reached a steady state. Try increasing the search depth. '
                   'It may however also be the case that your asynchronous state space contains a limit cycle.' %
                   (sum(basin_sizes), nsim if not EXACT else 2**self.N))
-        return (steady_states, len(steady_states), basin_sizes, steady_state_dict, dictF, SEED,
-                initial_sample_points if initial_sample_points != [] else sampled_points)
+        return dict(zip(["SteadyStates", "NumberOfSteadyStates", "BasinSizes", "SteadyStateDict", "FunctionTransitionDict", "Seed", "InitialSamplePoints"],
+                        (steady_states, len(steady_states), basin_sizes, steady_state_dict, dictF, SEED,
+                initial_sample_points if initial_sample_points != [] else sampled_points)))
 
 
     def get_steady_states_asynchronous_given_one_initial_condition(self, nsim=500, stochastic_weights=[], initial_condition=0, search_depth=50, SEED=-1, DEBUG=False):
@@ -310,15 +310,15 @@ class BooleanNetwork:
             DEBUG (bool, optional): If True, print debugging information (default is False).
 
         Returns:
-            tuple: A tuple containing:
-                - steady_states (list): List of steady state values (in decimal form) reached.
-                - number_of_steady_states (int): Total number of unique steady states.
-                - basin_sizes (list): List of counts of how many simulations reached each steady state.
-                - transient_times (list): List of lists with transient times (number of updates) for each steady state.
-                - steady_state_dict (dict): Dictionary mapping a steady state (in decimal) to its index.
-                - dictF (dict): Dictionary caching computed state transitions.
-                - SEED (int): The random seed used.
-                - queues (list): List of state update queues (the sequence of states encountered) for each simulation.
+            dict: A dictionary containing:
+                - SteadyStates (list): List of steady state values (in decimal form) reached.
+                - NumberOfSteadyStates (int): Total number of unique steady states.
+                - BasinSizes (list): List of counts of how many simulations reached each steady state.
+                - TransientTimes (list): List of lists with transient times (number of updates) for each steady state.
+                - SteadyStateDict (dict): Dictionary mapping a steady state (in decimal) to its index.
+                - FunctionTransitionDict (dict): Dictionary caching computed state transitions.
+                - Seed (int): The random seed used.
+                - UpdateQueues (list): List of state update queues (the sequence of states encountered) for each simulation.
         """
         if SEED == -1:
             SEED = int(random.random() * 2**31)
@@ -400,7 +400,8 @@ class BooleanNetwork:
         if sum(basin_sizes) < nsim:
             print('Warning: only %i of the %i tested initial conditions eventually reached a steady state. '
                   'Try increasing the search depth. It may also be that your asynchronous state space contains a limit cycle.' % (sum(basin_sizes), nsim))
-        return (steady_states, len(steady_states), basin_sizes, transient_times, steady_state_dict, dictF, SEED, queues)
+        return dict(zip(["SteadyStates", "NumberOfSteadyStates", "BasinSizes", "TransientTimes", "SteadyStateDict", "FunctionTransitionDict", "Seed", "UpdateQueues"],
+                        (steady_states, len(steady_states), basin_sizes, transient_times, steady_state_dict, dictF, SEED, queues)))
 
 
     def get_attractors_synchronous(self, nsim=500, initial_sample_points=[], n_steps_timeout=100000,
@@ -421,14 +422,14 @@ class BooleanNetwork:
                                                                       if False, they are given as decimal numbers. Default is True.
 
         Returns:
-            tuple: A tuple containing:
-                - attractors (list): List of attractors (each as a list of states in the attractor cycle).
-                - number_of_attractors (int): Total number of unique attractors found.
-                - basin_sizes (list): List of counts for each attractor.
-                - attr_dict (dict): Dictionary mapping states (in decimal) to the index of their attractor.
-                - initial_sample_points (list): The initial sample points used (if provided, they are returned; otherwise, the generated points).
-                - state_space (list): List of states (in decimal) encountered after one update from initial_sample_points.
-                - n_timeout (int): Number of simulations that timed out before reaching an attractor.
+            dict: A dictionary containing:
+                - Attractors (list): List of attractors (each as a list of states in the attractor cycle).
+                - NumberOfAttractors (int): Total number of unique attractors found.
+                - BasinSizes (list): List of counts for each attractor.
+                - AttractorDict (dict): Dictionary mapping states (in decimal) to the index of their attractor.
+                - InitialSamplePoints (list): The initial sample points used (if provided, they are returned; otherwise, the generated points).
+                - StateSpace (list): List of states (in decimal) encountered after one update from initial_sample_points.
+                - NumberOfTimeouts (int): Number of simulations that timed out before reaching an attractor.
         """
         dictF = dict()
         attractors = []
@@ -485,13 +486,14 @@ class BooleanNetwork:
                 xdec = fxdec
                 count += 1
                 if count == n_steps_timeout:
-                    n_timeout += 1            
-        return (attractors, len(attractors), basin_sizes, attr_dict,
+                    n_timeout += 1
+        return dict(zip(["Attractors", "NumberOfAttractors", "BasinSizes", "AttractorDict", "InitialSamplePoints", "StateSpace", "NumberOfTimeouts"],
+                        (attractors, len(attractors), basin_sizes, attr_dict,
                 sampled_points if INITIAL_SAMPLE_POINTS_EMPTY else initial_sample_points,
-                state_space, n_timeout)
+                state_space, n_timeout)))
 
 
-    def get_attractors_synchronous_exact(self, RETURN_DICTF=False):
+    def get_attractors_synchronous_exact(self, left_side_of_truth_table = None, RETURN_DICTF=False):
         """
         Compute the exact number of attractors in a Boolean network using a fast, vectorized approach.
 
@@ -504,16 +506,16 @@ class BooleanNetwork:
                                             in which each state is associated by its decimal representation.
 
         Returns:
-            tuple: A tuple containing:
-                - attractors (list): List of attractors (each attractor is represented as a list of states forming the cycle).
-                - number_of_attractors (int): Total number of unique attractors.
-                - basin_sizes (list): List of counts for each attractor.
-                - attractor_dict (dict): Dictionary mapping each state (in decimal) to its attractor index.
-                - state_space (np.array): The constructed state space matrix (of shape (2^N, N)).
-                - dictF (dict, only returned if RETURN_DICTF==True): State space as dictionary.
+            dict: A dictionary containing:
+                - Attractors (list): List of attractors (each attractor is represented as a list of states forming the cycle).
+                - NumberOfAttractors (int): Total number of unique attractors.
+                - BasinSizes (list): List of counts for each attractor.
+                - AttractorDict (dict): Dictionary mapping each state (in decimal) to its attractor index.
+                - StateSpace (np.array): The constructed state space matrix (of shape (2^N, N)).
+                - FunctionTransitionDict (dict, only returned if RETURN_DICTF==True): State space as dictionary.
         """        
-        if self.lstt is None:
-            self.lstt = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=self.N)))))
+        if left_side_of_truth_table is None:
+            left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=self.N)))))
         
         powers_of_two = np.array([2**i for i in range(self.N)])[::-1]
         degrees = list(map(len, self.I))
@@ -523,7 +525,7 @@ class BooleanNetwork:
             for j, x in enumerate(itertools.product([0, 1], repeat=degrees[i])):
                 if self.F[i].f[j]:
                     # For rows in left_side_of_truth_table where the columns I[i] equal x, set state_space accordingly.
-                    state_space[np.all(self.lstt[:, self.I[i]] == np.array(x), axis=1), i] = 1
+                    state_space[np.all(left_side_of_truth_table[:, self.I[i]] == np.array(x), axis=1), i] = 1
         dictF = dict(zip(list(range(2**self.N)), np.dot(state_space, powers_of_two)))
         
         attractors = []
@@ -550,9 +552,11 @@ class BooleanNetwork:
                 queue.append(fxdec)
                 xdec = fxdec
         if RETURN_DICTF:
-            return (attractors, len(attractors), basin_sizes, attractor_dict, state_space, dictF)        
+            return dict(zip(["Attractors", "NumberOfAttractors", "BasinSizes", "AttractorDict", "StateSpace", "FunctionTransitionDict"],
+                            (attractors, len(attractors), basin_sizes, attractor_dict, state_space, dictF)))  
         else:
-            return (attractors, len(attractors), basin_sizes, attractor_dict, state_space)
+            return dict(zip(["Attractors", "NumberOfAttractors", "BasinSizes", "AttractorDict", "StateSpace"],
+                            (attractors, len(attractors), basin_sizes, attractor_dict, state_space)))  
 
 
     ## Transform Boolean networks
@@ -566,10 +570,10 @@ class BooleanNetwork:
         and a corresponding list of essential regulators.
 
         Returns:
-            tuple: (F_essential, I_essential) where:
-                - F_essential is a list of N Boolean functions (truth tables) of length 2^(m_i), with m_i ≤ n_i,
+            BooleanNetwork: A Boolean network object where:
+                - F is a list of N Boolean functions containing functions of length 2^(m_i), with m_i ≤ n_i,
                   representing the functions restricted to the essential regulators.
-                - I_essential is a list of N lists containing the indices of the essential regulators for each node.
+                - I is a list of N lists containing the indices of the essential regulators for each node.
         """
         F_essential = []
         I_essential = []
@@ -593,10 +597,10 @@ class BooleanNetwork:
                 F_essential.append(bf)
                 I_essential.append(regulators)
             else:
-                lstt = np.array(list(itertools.product([0, 1], repeat=n)))
-                F_essential.append(BF(bf.f[np.sum(lstt[:, non_essential_variables], 1) == 0]))
+                left_side_of_truth_table = np.array(list(itertools.product([0, 1], repeat=n)))
+                F_essential.append(BF(bf.f[np.sum(left_side_of_truth_table[:, non_essential_variables], 1) == 0]))
                 I_essential.append(np.array(regulators)[essential_variables])
-        return F_essential, I_essential #TODO: return an instanc eof BooleanNetwork
+        return BooleanNetwork(F_essential, I_essential, self.variables)
 
 
     def get_edge_controlled_network(self, control_target, control_source, type_of_edge_control=0, left_side_of_truth_table=[]):
@@ -618,7 +622,6 @@ class BooleanNetwork:
             BooleanNetwork object where:
                 - F is the updated list of Boolean functions after perturbation.
                 - I is the updated wiring diagram after removing the control regulator from the target node.
-                - ns is the updated list of in-degrees for each node.
         """
         assert type_of_edge_control in [0,1], "type_of_edge_control must be 0 or 1."
         assert control_source in self.I[control_target], "control_source=%i does not regulate control_target=%i." % (control_source,control_target)
@@ -679,28 +682,28 @@ class BooleanNetwork:
             return np.mean(hamming_distances)
 
 
-    def get_attractors_and_robustness_measures_synchronous_exact(self):
+    def get_attractors_and_robustness_measures_synchronous_exact(self, left_side_of_truth_table=None):
         """
         Compute the attractors and several robustness measures of a Boolean network.
 
         This function computes the exact attractors and robustness (coherence and fragility) of each basin of attraction and of each attractor.
 
         Returns:
-            tuple: A tuple containing:
-                - attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
-                - exact_number_of_attractors (int): The exact number of network attractors.
-                - exact_basin_sizes (list): List of basin sizes for each attractor.
-                - attractor_dict (dict): Dictionary mapping each state (in decimal) to its attractor index.
-                - state_space (np.array): The constructed state space matrix (of shape (2^N, N)).
-                - exact_basin_coherence (list): coherence of each basin.
-                - exact_basin_fragility (list): fragility of each basin.
-                - attractor_coherence (list): attractor coherence of each basin (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
-                - attractor_fragility (list): attractor fragility of each basin  (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
-                - coherence (float): overall network coherence
-                - fragility (float): overall network fragility
+            dict: A dictionary containing:
+                - Attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
+                - ExactNumberOfAttractors (int): The exact number of network attractors.
+                - ExactBasinSizes (list): List of basin sizes for each attractor.
+                - AttractorDict (dict): Dictionary mapping each state (in decimal) to its attractor index.
+                - StateSpace (np.array): The constructed state space matrix (of shape (2^N, N)).
+                - Coherence (float): overall network coherence
+                - Fragility (float): overall network fragility
+                - ExactBasinCoherence (list): coherence of each basin.
+                - ExactBasinFragility (list): fragility of each basin.
+                - AttractorCoherence (list): attractor coherence of each basin (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+                - AttractorFragility (list): attractor fragility of each basin  (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
         """
-        if self.lstt is None:
-            self.lstt = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=self.N)))))
+        if left_side_of_truth_table is None:
+            left_side_of_truth_table = np.array(list(map(np.array, list(itertools.product([0, 1], repeat=self.N)))))
         
         attractors, n_attractors, basin_sizes, attractor_dict, state_space = self.get_attractors_synchronous_exact()
         
@@ -734,7 +737,7 @@ class BooleanNetwork:
         attractor_fragilities = np.zeros(n_attractors)
         
         powers_of_2 = np.array([2**i for i in range(self.N)])[::-1]
-        for xdec, x in enumerate(self.lstt): #iterate over each edge of the n-dim Hypercube once
+        for xdec, x in enumerate(left_side_of_truth_table): #iterate over each edge of the n-dim Hypercube once
             for i in range(self.N):
                 if x[i] == 0:
                     ydec = xdec + powers_of_2[i]
@@ -781,11 +784,16 @@ class BooleanNetwork:
         coherence = np.dot(basin_sizes,basin_coherences)
         fragility = np.dot(basin_sizes,basin_fragilities)
         
-        return (attractors, n_attractors, basin_sizes, 
+        return dict(zip(["Attractors", "ExactNumberOfAttractors", "ExactBasinSizes",
+                         "AttractorDict", "StateSpace",
+                         "Coherence", "Fragility",
+                         "ExactBasinCoherence", "ExactBasinFragility",
+                         "AttractorCoherence", "AttractorFragility"],
+                    (attractors, n_attractors, basin_sizes, 
                 attractor_dict, state_space,
                 coherence,fragility,
                 basin_coherences, basin_fragilities,
-                attractor_coherences, attractor_fragilities)
+                attractor_coherences, attractor_fragilities)))
 
 
     def get_attractors_and_robustness_measures_synchronous(self, number_different_IC=500, RETURN_ATTRACTOR_COHERENCE = False):
@@ -807,17 +815,17 @@ class BooleanNetwork:
             RETURN_ATTRACTOR_COHERENCE (bool, optional): Determines whether the attractor coherence should also be computed (default is No, i.e., False).
 
         Returns:
-            tuple: A tuple containing:
-                - attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
-                - lower_bound_number_of_attractors (int): The lower bound on the number of attractors found.
-                - approximate_basin_sizes (list): List of basin sizes for each attractor.
-                - approximate_coherence (float): The approximate overall network coherence.
-                - approximate_fragility (float): The approximate overall network fragility.
-                - final_hamming_distance_approximation (float): The approximated final Hamming distance measure.
-                - approximate_basin_coherence (list): The approximate coherence of each basin.
-                - approximate_basin_fragility (list): The approximate fragility of each basin.
-                - attractor_coherence (list): The exact coherence of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
-                - attractor_fragility (list): The exact fragility of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+            dict: A dictionary containing:
+                - Attractors (list): List of attractors (each attractor is represented as a list of state decimal numbers).
+                - LowerBoundOfNumberOfAttractors (int): The lower bound on the number of attractors found.
+                - BasinSizesApproximation (list): List of basin sizes for each attractor.
+                - CoherenceApproximation (float): The approximate overall network coherence.
+                - FragilityApproximation (float): The approximate overall network fragility.
+                - FinalHammingDistanceApproximation (float): The approximated final Hamming distance measure.
+                - BasinCoherenceApproximation (list): The approximate coherence of each basin.
+                - BasinFragilityApproximation (list): The approximate fragility of each basin.
+                - AttractorCoherence (list): The exact coherence of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
+                - AttractorFragility (list): The exact fragility of each attractor (only computed and returned if RETURN_ATTRACTOR_COHERENCE == True).
         """
         def lcm(a, b):
             return abs(a*b) // math.gcd(a, b)
@@ -979,7 +987,10 @@ class BooleanNetwork:
                    approximate_coherence, approximate_fragility, final_hamming_distance_approximation,
                    approximate_basin_coherence, approximate_basin_fragility]
         if RETURN_ATTRACTOR_COHERENCE == False:
-            return tuple(results)
+            return dict(zip(["Attractors", "LowerBoundOfNumberOfAttractors", "BasinSizesApproximation",
+                             "CoherenceApproximation", "FragilityApproximation", "FinalHammingDistanceApproximation",
+                             "BasinCoherenceApproximation", "BasinFragilityApproximation"],
+                            tuple(results)))
         else:
             attractor_coherence = np.zeros(lower_bound_number_of_attractors)
             attractor_fragility = np.zeros(lower_bound_number_of_attractors)
@@ -1066,7 +1077,11 @@ class BooleanNetwork:
             attractor_coherence = np.array([s/self.N/size_attr for s,size_attr in zip(attractor_coherence,map(len,attractors_original))])
             attractor_fragility = np.array([s/self.N**2/size_attr for s,size_attr in zip(attractor_fragility,map(len,attractors_original))]) #something is wrong with attractor fragility, it returns values > 1 for small basins
             results[0] = attractors_original
-            return tuple(results + [attractor_coherence,attractor_fragility])
+            return dict(zip(["Attractors", "LowerBoundOfNumberOfAttractors", "BasinSizesApproximation",
+                             "CoherenceApproximation", "FragilityApproximation", "FinalHammingDistanceApproximation",
+                             "BasinCoherenceApproximation", "BasinFragilityApproximation",
+                             "AttractorCoherence", "AttractorFragility"],
+                            tuple(results + [attractor_coherence,attractor_fragility])))
         
     def get_strongly_connected_components(self):
         """
